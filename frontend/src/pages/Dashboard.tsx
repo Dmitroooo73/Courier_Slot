@@ -292,6 +292,13 @@ export function Dashboard() {
               <div><dt>Проверили на отдельных датах</dt><dd>{formatDate(metrics.holdout.start, true)} — {formatDate(metrics.holdout.end, true)}</dd></div>
               <div><dt>Промах прогноза по прошлой неделе</dt><dd>{number(metrics.holdout.baseline.mae_orders)} заказа</dd></div>
             </dl>
+            {metrics.data_quality && <details className="monitor-help quality-data-check">
+              <summary>Проверка исходных данных</summary>
+              <p>Проверено {number(metrics.data_quality.checked_orders)} заказов за {metrics.data_quality.checked_days} дней.
+                Необычных значений спроса: {metrics.data_quality.anomaly_count}. Они отмечаются для проверки и сохраняются.</p>
+              <p>Неполных дней погоды: {metrics.data_quality.missing_weather_days}. Пропуски обрабатывает модель;
+                ошибки в ID, зоне и времени заказа останавливают публикацию.</p>
+            </details>}
           </section>}
           <section className="panel history-panel">
             <div className="panel-heading">

@@ -34,7 +34,7 @@ export function HistoryChart({ points, actualLabel = "Факт" }: { points: For
         </div>
         <div className="chart-point">
           <span>{formatDate(point.date, true)}</span>
-          <strong>{number(point.actual)} / {number(point.forecast)}</strong>
+          <strong>{actualLabel}: {number(point.actual)} · прогноз: {number(point.forecast)}</strong>
         </div>
       </div>
       <svg

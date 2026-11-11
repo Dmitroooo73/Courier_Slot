@@ -64,6 +64,12 @@ export interface Metrics {
   selected: ModelChoice;
   feature_importance?: ImportanceWindow[];
   scenarios?: Record<string, ScenarioCurve[]>;
+  data_quality?: {
+    checked_days: number;
+    checked_orders: number;
+    anomaly_count: number;
+    missing_weather_days: number;
+  };
   holdout: {
     start: string;
     end: string;

@@ -34,6 +34,7 @@ export function ForecastExplanation({ zone }: { zone: ZoneForecast }) {
         </p>
       ) : (
         <div className="explanation-body">
+          <p className="explanation-note">Плюс добавляет заказы к отправной точке, минус уменьшает прогноз. Это вклад фактора в расчёт модели.</p>
           <p className="explanation-base">
             <span>{explanation.method === "ridge" ? "Средний прогноз модели" : "Отправная точка модели"}</span>
             <strong>{number(explanation.base_orders)}</strong>
