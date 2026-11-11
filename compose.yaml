@@ -1,0 +1,79 @@
+name: pult-dostavki
+
+x-app: &app
+  build: .
+  environment: &app-environment
+    PULT_DATA_DIR: /app/data
+    PULT_DATABASE_URL: host=db dbname=pult user=pult
+    PGPASSWORD: ${PULT_DB_PASSWORD:-pult-local-dev}
+
+x-minio: &minio-environment
+  MINIO_ROOT_USER: ${PULT_MINIO_USER:-pult-local}
+  MINIO_ROOT_PASSWORD: ${PULT_MINIO_PASSWORD:-pult-local-avatar-dev}
+
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: pult
+      POSTGRES_USER: pult
+      POSTGRES_PASSWORD: ${PULT_DB_PASSWORD:-pult-local-dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "pult", "-d", "pult"]
+      interval: 3s
+      timeout: 4s
+      retries: 20
+    restart: unless-stopped
+
+  init:
+    <<: *app
+    command: ["python", "-m", "backend.bootstrap"]
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  minio:
+    image: ${PULT_MINIO_IMAGE:-minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+    command: ["server", "/data"]
+    environment: *minio-environment
+    volumes:
+      - avatar_data:/data
+    restart: unless-stopped
+
+  web:
+    <<: *app
+    environment:
+      <<: [*app-environment, *minio-environment]
+      PULT_AUTH_SECURE_COOKIE: ${PULT_AUTH_SECURE_COOKIE:-0}
+      PULT_MINIO_ENDPOINT: minio:9000
+    ports:
+      - "127.0.0.1:${PULT_PORT:-8765}:8000"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/dashboard', timeout=5).close()"]
+      interval: 10s
+      timeout: 7s
+      retries: 6
+    restart: unless-stopped
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "backend.daily", "--watch"]
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  avatar_data:

@@ -1,0 +1,16 @@
+__pycache__/
+.venv/
+/data/
+/frontend/dist/
+/frontend/node_modules/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.dump
+*.tar
+/tmp/
+/output/
+.pytest_cache/
+.coverage
