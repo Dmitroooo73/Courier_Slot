@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -33,10 +34,7 @@ ZONES = (
 )
 
 
-def generate_orders(day: date, path: Path) -> None:
-    buffer = io.StringIO(newline="")
-    writer = csv.writer(buffer, lineterminator="\n")
-    writer.writerow(ORDER_FIELDS)
+def synthetic_records(day: date):
     midnight = datetime.combine(day, time.min, tzinfo=MOSCOW)
     for zone in ZONES:
         rng = Random(f"{SEED}:{day}:{zone.id}")
@@ -45,8 +43,81 @@ def generate_orders(day: date, path: Path) -> None:
         minutes = sorted(rng.randrange(24 * 60) for _ in range(count))
         for index, minute in enumerate(minutes, start=1):
             created_at = midnight + timedelta(minutes=minute)
-            writer.writerow((f"{day}-{zone.id}-{index}", created_at.isoformat(), zone.id))
-    write_text(path, buffer.getvalue())
+            yield (f"{day}-{zone.id}-{index}", created_at.isoformat(), zone.id)
+
+
+def generate_event_log(day: date, path: Path) -> None:
+    """Synthetic service log: free text, optional fields and mixed event types."""
+    lines = [f"{day}T00:00:00+03:00 INFO service started"]
+    for index, (order_id, created_at, zone) in enumerate(synthetic_records(day)):
+        fields = f"order_id={order_id} zone={zone}" if index % 2 else f"zone={zone} order_id={order_id}"
+        lines.append(f"{created_at} INFO order.created {fields} channel=demo | Order accepted")
+        if index % 29 == 0:
+            # A retry is a second delivery of an event, not another order.
+            lines.append(lines[-1] + " (redelivered)")
+        if index % 53 == 0:
+            lines.append(f"{created_at} DEBUG service heartbeat")
+    lines.append(f"{day}T23:59:59+03:00 INFO export.complete")
+    write_text(path, "\n".join(lines) + "\n")
+
+
+def import_event_log(day: date, source: Path, destination: Path) -> dict[str, int]:
+    """Normalize a completed log atomically; reject ambiguous order events."""
+    records: dict[str, tuple[str, str, str]] = {}
+    counts = dict.fromkeys((zone.id for zone in ZONES), 0)
+    stats = {"events": 0, "duplicate_events": 0, "ignored_lines": 0}
+    complete = False
+    for line_number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+        parts = line.split(maxsplit=3)
+        kind = parts[2] if len(parts) >= 3 else ""
+        if kind == "export.complete":
+            stamp = datetime.fromisoformat(parts[0])
+            if stamp.tzinfo is None or stamp.astimezone(MOSCOW).date() != day:
+                raise ValueError(f"{source}:{line_number}: неверная дата завершения выгрузки")
+            complete = True
+            continue
+        if kind != "order.created":
+            stats["ignored_lines"] += 1
+            continue
+        if complete:
+            raise ValueError(f"{source}:{line_number}: заказ после завершения выгрузки")
+        try:
+            fields = re.findall(r"\b(order_id|zone)=([^\s|]+)", parts[3])
+            if len(fields) != 2 or len(dict(fields)) != 2:
+                raise ValueError("неоднозначные поля заказа")
+            values = dict(fields)
+            order_id, zone = values["order_id"], values["zone"]
+            if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", order_id) or zone not in counts:
+                raise ValueError("неверный ID или зона")
+            stamp = datetime.fromisoformat(parts[0])
+            if stamp.tzinfo is None or stamp.astimezone(MOSCOW).date() != day:
+                raise ValueError("заказ за пределами суток")
+        except (ValueError, KeyError, IndexError) as error:
+            raise ValueError(f"{source}:{line_number}: некорректное событие заказа ({error})") from error
+        record = (order_id, stamp.astimezone(MOSCOW).isoformat(), zone)
+        if order_id in records:
+            if records[order_id] != record:
+                raise ValueError(f"{source}:{line_number}: конфликт событий одного заказа")
+            stats["duplicate_events"] += 1
+        else:
+            records[order_id] = record
+            counts[zone] += 1
+            stats["events"] += 1
+    if not complete or 0 in counts.values():
+        raise ValueError(f"{source}: неполная выгрузка суток или отсутствуют зоны")
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(ORDER_FIELDS)
+    writer.writerows(records.values())
+    write_text(destination, buffer.getvalue())
+    return stats
+
+
+def generate_orders(day: date, path: Path) -> None:
+    events = path.parent.parent / "order_events" / f"{day}.log"
+    if not events.is_file():
+        generate_event_log(day, events)
+    import_event_log(day, events, path)
 
 
 def load_history(

@@ -45,6 +45,8 @@ def read_forecast(directory: Path, target: date) -> tuple[dict, dict | None]:
             metrics["feature_importance"] = report["feature_importance"]
         if "scenarios" in report:
             metrics["scenarios"] = report["scenarios"]
+        if "data_quality" in report:
+            metrics["data_quality"] = report["data_quality"]
     except (KeyError, TypeError) as error:
         raise InvalidArtifact(name) from error
     return forecast, metrics

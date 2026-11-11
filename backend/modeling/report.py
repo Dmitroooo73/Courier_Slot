@@ -5,6 +5,7 @@ from pathlib import Path
 
 from backend.pipeline.forecast import BASELINE, forecast_cutoff, zone_forecasts
 from backend.pipeline.orders import SEED, load_history
+from backend.pipeline.quality import quality_summary
 from backend.pipeline.weather import MODEL as WEATHER_MODEL
 from backend.pipeline.weather_archive import LEAD_HOURS, WEATHER_FEATURES, weather_history
 
@@ -26,6 +27,7 @@ def report_inputs(target: date, data: Path, journal: dict):
         "last_day": max(history).isoformat(),
         "generated_days": new_days,
         "reused_days": len(history) - new_days,
+        "new_day_source": "synthetic_event_log",
     }
     first = min(history) + timedelta(days=max(LAGS))
     journal["step"] = "weather"
@@ -36,6 +38,7 @@ def report_inputs(target: date, data: Path, journal: dict):
         "origin": "api" if downloaded_days else "cache",
         "downloaded_utc_days": downloaded_days,
     }
+    journal["data_quality"] = quality_summary(history, weather)
     journal["step"] = "model"
     rows = [
         {**row, "actual_orders": history[day][row["zone_id"]]}
@@ -89,6 +92,7 @@ def build_report(target: date, data: Path, journal: dict) -> dict:
             "weather": list(WEATHER_FEATURES),
         },
         "parameters": model_parameters(),
+        "data_quality": journal["data_quality"],
         "weather": {
             "provider": "Open-Meteo",
             "model": WEATHER_MODEL,

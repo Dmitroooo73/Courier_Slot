@@ -4,12 +4,14 @@ from datetime import date, timedelta
 from importlib.util import find_spec
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from backend.pipeline.forecast import BASELINE
 from backend.pipeline.storage import write_json
 from backend.services.dashboard import read_forecast
 
 
+@patch.dict("os.environ", {"PULT_DATABASE_URL": ""})
 class LegacyExplanationTests(unittest.TestCase):
     def test_baseline_report_explains_its_reference_date(self):
         target = date(2026, 10, 24)

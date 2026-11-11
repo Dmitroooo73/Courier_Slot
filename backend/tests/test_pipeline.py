@@ -12,6 +12,7 @@ from backend.pipeline.__main__ import run
 from backend.pipeline.weather import DEMO_DATE, SNAPSHOT, daily_values, download
 
 
+@patch.dict("os.environ", {"PULT_DATABASE_URL": ""})
 class DemoTests(unittest.TestCase):
     def test_repeat_ignores_orders_after_cutoff(self):
         with TemporaryDirectory(dir=Path.cwd()) as directory, redirect_stdout(io.StringIO()):

@@ -11,6 +11,7 @@ from backend.daily import daily_lock, latest_due, publish_daily, watch
 from backend.pipeline.orders import MOSCOW
 
 
+@patch.dict("os.environ", {"PULT_DATABASE_URL": ""})
 class DailyTests(unittest.TestCase):
     def test_target_switches_at_twenty_moscow_time(self):
         before = datetime(2026, 11, 7, 16, 59, 59, tzinfo=timezone.utc)

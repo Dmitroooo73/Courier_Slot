@@ -43,15 +43,16 @@ CATBOOST_PARAMETERS = {
 }
 
 
-def fit_model(model: str, uses_weather: bool, train: pd.DataFrame):
-    numeric = list(ORDER_FEATURES)
+def fit_model(model: str, uses_weather: bool, train: pd.DataFrame, *, excluded: tuple[str, ...] = ()):
+    numeric = [feature for feature in ORDER_FEATURES if feature not in excluded]
     if uses_weather:
-        numeric.extend(WEATHER_FEATURES)
-    columns = [*CATEGORIES, *numeric]
+        numeric.extend(feature for feature in WEATHER_FEATURES if feature not in excluded)
+    categories = [feature for feature in CATEGORIES if feature not in excluded]
+    columns = [*categories, *numeric]
     if model == "ridge":
         preprocessing = ColumnTransformer(
             [
-                ("categorical", OneHotEncoder(handle_unknown="ignore"), list(CATEGORIES)),
+                ("categorical", OneHotEncoder(handle_unknown="ignore"), categories),
                 (
                     "numeric",
                     make_pipeline(
@@ -64,7 +65,7 @@ def fit_model(model: str, uses_weather: bool, train: pd.DataFrame):
         )
         estimator = make_pipeline(preprocessing, Ridge(**RIDGE_PARAMETERS))
     else:
-        estimator = CatBoostRegressor(cat_features=list(CATEGORIES), **CATBOOST_PARAMETERS)
+        estimator = CatBoostRegressor(cat_features=categories, **CATBOOST_PARAMETERS)
     estimator.fit(train[columns], train["actual_orders"])
     return estimator, columns
 

@@ -41,6 +41,7 @@ def run(
             "generated_days": new_days,
             "reused_days": len(history) - new_days,
             "orders": order_count,
+            "new_day_source": "synthetic_event_log",
         }
         journal["step"] = "weather"
         weather, origin = weather_for_day(target, data / "raw" / "weather", fetch_weather)
