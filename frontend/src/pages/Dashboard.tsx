@@ -15,9 +15,11 @@ import { formatDate, formatDateTime, formatTime, modelName, number } from "../fo
 import { useAuth } from "../useAuth";
 import { AccountPanel } from "./Account";
 import { AdminPanel } from "./Admin";
+import { CourierPanel } from "./Courier";
 
 const refreshInterval = 60_000;
 const views = [
+  { id: "courier", label: "Курьер", heading: "Остаться или сменить район?" },
   { id: "forecast", label: "Прогноз", heading: "Спрос по зонам" },
   { id: "quality", label: "Качество", heading: "Качество прогноза" },
   { id: "monitoring", label: "Мониторинг", heading: "Мониторинг" },
@@ -171,7 +173,7 @@ export function Dashboard() {
       }}>К содержимому</a>
       <header className="topbar">
         <div className="topbar-inner">
-          <a className="brand" href="#forecast">
+          <a className="brand" href="#courier">
             <span className="brand-icon">
               <svg viewBox="0 0 28 28" fill="none" aria-hidden="true">
                 <path d="M14 4.5 23 9.2v9.6l-9 4.7-9-4.7V9.2L14 4.5Z" />
@@ -197,12 +199,13 @@ export function Dashboard() {
             <p className="eyebrow hero-kicker">МОСКВА <span /> ПЛАНИРОВАНИЕ ДОСТАВКИ</p>
             <h1 id="page-title">{view.heading}</h1>
             <p>{view.id === "account" ? "Регистрация, вход и управление сессией" :
+              view.id === "courier" ? "Понятный выбор перед переездом" :
               view.id === "admin" ? "Пользователи и роли" :
               view.id === "runs" ? "История обновления данных и публикации прогнозов" :
               view.id === "monitoring" ? monitorMode === "live" ? "Сверка прогнозов с заказами после закрытия суток" : "Учебная проверка на 14 прошлых днях" :
               forecast ? "Прогноз на " + formatDate(forecast.target_date) : "Суточный прогноз заказов готовой еды"}</p>
           </div>
-          {!accountView && <div className="hero-actions">
+          {!accountView && view.id !== "courier" && <div className="hero-actions">
             {view.id !== "runs" && (view.id !== "monitoring" || monitorMode === "demo") && (
               <label className="date-control">
                 <span>Дата прогноза</span>
@@ -219,7 +222,7 @@ export function Dashboard() {
           </div>}
         </section>
 
-        {!accountView && <div className="status-bar">
+        {!accountView && view.id !== "courier" && <div className="status-bar">
           <span><i />Синтетические заказы</span>
           <span aria-live="polite">
             {updatedAt ? "Данные получены в " + formatTime(updatedAt) + " мск" : "Подключение к локальному API"}
@@ -228,6 +231,7 @@ export function Dashboard() {
         {!accountView && error && <p className="notice" role="alert">{error}</p>}
         {view.id === "account" && <AccountPanel auth={auth} zones={zones} />}
         {view.id === "admin" && <AdminPanel auth={auth} zones={zones} />}
+        {view.id === "courier" && <CourierPanel forecast={forecast} selected={selected} onSelect={setZoneId} />}
 
         {view.id === "forecast" && (forecast && selected ? (
           <>
