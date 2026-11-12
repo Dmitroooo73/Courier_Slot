@@ -1,0 +1,41 @@
+name: Application checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: pult_test
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: ci-disposable-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d pult_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PULT_DATABASE_URL: ""
+      PULT_TEST_DATABASE_URL: host=127.0.0.1 dbname=pult_test user=test_runner password=ci-disposable-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements-web.txt -r requirements-db.txt -r requirements-ml.txt
+      - run: python -m unittest discover -s backend/tests -v
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend test
+      - run: npm --prefix frontend run build

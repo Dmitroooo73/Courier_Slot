@@ -1,0 +1,430 @@
+{
+  "target_date": "2026-11-11",
+  "dataset_sha256": "254044127201e3eb59bae88c5541dba6c1b45e8b40e4bdad9f44684387822fc8",
+  "seed": 42,
+  "versions": {
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "pandas": "2.3.3",
+    "catboost": "1.2.10",
+    "scikit-learn": "1.8.0"
+  },
+  "parameters": {
+    "ridge": {
+      "alpha": 1.0
+    },
+    "catboost": {
+      "depth": 5,
+      "verbose": false,
+      "has_time": true,
+      "iterations": 250,
+      "random_seed": 42,
+      "thread_count": 2,
+      "learning_rate": 0.05,
+      "one_hot_max_size": 7,
+      "allow_writing_files": false
+    },
+    "seasonal_naive_7d": {
+      "lag_days": 7
+    }
+  },
+  "selected": {
+    "model": "ridge",
+    "uses_weather": true
+  },
+  "validation": [
+    {
+      "model": "seasonal_naive_7d",
+      "by_zone": {
+        "east": {
+          "mae_orders": 8.05952380952381,
+          "observations": 84,
+          "wape_percent": 7.130819464925216
+        },
+        "west": {
+          "mae_orders": 6.178571428571429,
+          "observations": 84,
+          "wape_percent": 5.705804749340369
+        },
+        "north": {
+          "mae_orders": 7.226190476190476,
+          "observations": 84,
+          "wape_percent": 5.9550672029824385
+        },
+        "south": {
+          "mae_orders": 6.154761904761905,
+          "observations": 84,
+          "wape_percent": 6.205737606529828
+        },
+        "center": {
+          "mae_orders": 12.30952380952381,
+          "observations": 84,
+          "wape_percent": 7.620872641509434
+        },
+        "northwest": {
+          "mae_orders": 5.928571428571429,
+          "observations": 84,
+          "wape_percent": 7.027942421676546
+        }
+      },
+      "windows": [
+        {
+          "end": "2026-08-17",
+          "start": "2026-07-21",
+          "mae_orders": 7.732142857142857,
+          "observations": 168,
+          "wape_percent": 6.771973725367532,
+          "train_through": "2026-07-19"
+        },
+        {
+          "end": "2026-09-14",
+          "start": "2026-08-18",
+          "mae_orders": 7.666666666666667,
+          "observations": 168,
+          "wape_percent": 6.6735751295336785,
+          "train_through": "2026-08-16"
+        },
+        {
+          "end": "2026-10-12",
+          "start": "2026-09-15",
+          "mae_orders": 7.529761904761905,
+          "observations": 168,
+          "wape_percent": 6.559162086487608,
+          "train_through": "2026-09-13"
+        }
+      ],
+      "mae_orders": 7.642857142857143,
+      "observations": 504,
+      "uses_weather": false,
+      "wape_percent": 6.668051516410469
+    },
+    {
+      "model": "ridge",
+      "by_zone": {
+        "east": {
+          "mae_orders": 5.654761904761905,
+          "observations": 84,
+          "wape_percent": 5.00315989045713
+        },
+        "west": {
+          "mae_orders": 5.035714285714286,
+          "observations": 84,
+          "wape_percent": 4.650395778364116
+        },
+        "north": {
+          "mae_orders": 5.321428571428571,
+          "observations": 84,
+          "wape_percent": 4.385362503678995
+        },
+        "south": {
+          "mae_orders": 4.511904761904762,
+          "observations": 84,
+          "wape_percent": 4.549273796663066
+        },
+        "center": {
+          "mae_orders": 8.571428571428571,
+          "observations": 84,
+          "wape_percent": 5.306603773584905
+        },
+        "northwest": {
+          "mae_orders": 4.309523809523809,
+          "observations": 84,
+          "wape_percent": 5.108664973186565
+        }
+      },
+      "windows": [
+        {
+          "end": "2026-08-17",
+          "start": "2026-07-21",
+          "mae_orders": 5.589285714285714,
+          "observations": 168,
+          "wape_percent": 4.895214263371911,
+          "train_through": "2026-07-19"
+        },
+        {
+          "end": "2026-09-14",
+          "start": "2026-08-18",
+          "mae_orders": 5.916666666666667,
+          "observations": 168,
+          "wape_percent": 5.150259067357513,
+          "train_through": "2026-08-16"
+        },
+        {
+          "end": "2026-10-12",
+          "start": "2026-09-15",
+          "mae_orders": 5.196428571428571,
+          "observations": 168,
+          "wape_percent": 4.526599605931764,
+          "train_through": "2026-09-13"
+        }
+      ],
+      "mae_orders": 5.567460317460317,
+      "observations": 504,
+      "uses_weather": false,
+      "wape_percent": 4.857360476388312
+    },
+    {
+      "model": "ridge",
+      "by_zone": {
+        "east": {
+          "mae_orders": 5.654761904761905,
+          "observations": 84,
+          "wape_percent": 5.00315989045713
+        },
+        "west": {
+          "mae_orders": 5.035714285714286,
+          "observations": 84,
+          "wape_percent": 4.650395778364116
+        },
+        "north": {
+          "mae_orders": 5.321428571428571,
+          "observations": 84,
+          "wape_percent": 4.385362503678995
+        },
+        "south": {
+          "mae_orders": 4.523809523809524,
+          "observations": 84,
+          "wape_percent": 4.561277157604129
+        },
+        "center": {
+          "mae_orders": 8.583333333333334,
+          "observations": 84,
+          "wape_percent": 5.313974056603773
+        },
+        "northwest": {
+          "mae_orders": 4.273809523809524,
+          "observations": 84,
+          "wape_percent": 5.066327970646345
+        }
+      },
+      "windows": [
+        {
+          "end": "2026-08-17",
+          "start": "2026-07-21",
+          "mae_orders": 5.607142857142857,
+          "observations": 168,
+          "wape_percent": 4.910853925555208,
+          "train_through": "2026-07-19"
+        },
+        {
+          "end": "2026-09-14",
+          "start": "2026-08-18",
+          "mae_orders": 5.934523809523809,
+          "observations": 168,
+          "wape_percent": 5.16580310880829,
+          "train_through": "2026-08-16"
+        },
+        {
+          "end": "2026-10-12",
+          "start": "2026-09-15",
+          "mae_orders": 5.154761904761905,
+          "observations": 168,
+          "wape_percent": 4.490303847350409,
+          "train_through": "2026-09-13"
+        }
+      ],
+      "mae_orders": 5.565476190476191,
+      "observations": 504,
+      "uses_weather": true,
+      "wape_percent": 4.8556294142085585
+    },
+    {
+      "model": "catboost",
+      "by_zone": {
+        "east": {
+          "mae_orders": 6.25,
+          "observations": 84,
+          "wape_percent": 5.529808299978934
+        },
+        "west": {
+          "mae_orders": 5.071428571428571,
+          "observations": 84,
+          "wape_percent": 4.683377308707124
+        },
+        "north": {
+          "mae_orders": 5.678571428571429,
+          "observations": 84,
+          "wape_percent": 4.679682134798391
+        },
+        "south": {
+          "mae_orders": 4.785714285714286,
+          "observations": 84,
+          "wape_percent": 4.825351098307526
+        },
+        "center": {
+          "mae_orders": 8.583333333333334,
+          "observations": 84,
+          "wape_percent": 5.313974056603773
+        },
+        "northwest": {
+          "mae_orders": 4.238095238095238,
+          "observations": 84,
+          "wape_percent": 5.0239909681061246
+        }
+      },
+      "windows": [
+        {
+          "end": "2026-08-17",
+          "start": "2026-07-21",
+          "mae_orders": 5.690476190476191,
+          "observations": 168,
+          "wape_percent": 4.983839015743927,
+          "train_through": "2026-07-19"
+        },
+        {
+          "end": "2026-09-14",
+          "start": "2026-08-18",
+          "mae_orders": 6.196428571428571,
+          "observations": 168,
+          "wape_percent": 5.393782383419689,
+          "train_through": "2026-08-16"
+        },
+        {
+          "end": "2026-10-12",
+          "start": "2026-09-15",
+          "mae_orders": 5.416666666666667,
+          "observations": 168,
+          "wape_percent": 4.718448615576065,
+          "train_through": "2026-09-13"
+        }
+      ],
+      "mae_orders": 5.767857142857143,
+      "observations": 504,
+      "uses_weather": false,
+      "wape_percent": 5.032197756543415
+    },
+    {
+      "model": "catboost",
+      "by_zone": {
+        "east": {
+          "mae_orders": 6.071428571428571,
+          "observations": 84,
+          "wape_percent": 5.3718137771223935
+        },
+        "west": {
+          "mae_orders": 4.988095238095238,
+          "observations": 84,
+          "wape_percent": 4.606420404573439
+        },
+        "north": {
+          "mae_orders": 5.630952380952381,
+          "observations": 84,
+          "wape_percent": 4.640439517315805
+        },
+        "south": {
+          "mae_orders": 4.845238095238095,
+          "observations": 84,
+          "wape_percent": 4.885367903012844
+        },
+        "center": {
+          "mae_orders": 8.619047619047619,
+          "observations": 84,
+          "wape_percent": 5.336084905660377
+        },
+        "northwest": {
+          "mae_orders": 4.154761904761905,
+          "observations": 84,
+          "wape_percent": 4.925204628845611
+        }
+      },
+      "windows": [
+        {
+          "end": "2026-08-17",
+          "start": "2026-07-21",
+          "mae_orders": 5.529761904761905,
+          "observations": 168,
+          "wape_percent": 4.843082056094255,
+          "train_through": "2026-07-19"
+        },
+        {
+          "end": "2026-09-14",
+          "start": "2026-08-18",
+          "mae_orders": 6.190476190476191,
+          "observations": 168,
+          "wape_percent": 5.38860103626943,
+          "train_through": "2026-08-16"
+        },
+        {
+          "end": "2026-10-12",
+          "start": "2026-09-15",
+          "mae_orders": 5.434523809523809,
+          "observations": 168,
+          "wape_percent": 4.73400394068236,
+          "train_through": "2026-09-13"
+        }
+      ],
+      "mae_orders": 5.718253968253968,
+      "observations": 504,
+      "uses_weather": true,
+      "wape_percent": 4.9889212020495775
+    }
+  ],
+  "holdout": {
+    "end": "2026-11-09",
+    "start": "2026-10-13",
+    "baseline": {
+      "mae_orders": 7.946428571428571,
+      "observations": 168,
+      "wape_percent": 6.931104304034059
+    },
+    "selected": {
+      "mae_orders": 5.809523809523809,
+      "observations": 168,
+      "wape_percent": 5.067234307668345
+    },
+    "train_through": "2026-10-11"
+  },
+  "data_quality": {
+    "checked_days": 365,
+    "checked_orders": 250829,
+    "anomaly_count": 0,
+    "anomaly_examples": [],
+    "missing_weather_days": 29,
+    "policy": "invalid_records_block_publication; unusual_demand_is_flagged_and_kept"
+  },
+  "ridge_feature_ablation": [
+    {
+      "configuration": "all",
+      "excluded": [],
+      "mae_orders": 5.565476190476191,
+      "wape_percent": 4.8556294142085585,
+      "observations": 504,
+      "mae_delta_from_all": 0.0
+    },
+    {
+      "configuration": "without_weather",
+      "excluded": [
+        "mean_temperature_c",
+        "precipitation_mm",
+        "hours_with_precipitation"
+      ],
+      "mae_orders": 5.567460317460317,
+      "wape_percent": 4.857360476388312,
+      "observations": 504,
+      "mae_delta_from_all": 0.001984126984126533
+    },
+    {
+      "configuration": "without_order_history",
+      "excluded": [
+        "orders_lag_2",
+        "orders_lag_7",
+        "orders_lag_14",
+        "mean_closed_week"
+      ],
+      "mae_orders": 5.553571428571429,
+      "wape_percent": 4.845243041130037,
+      "observations": 504,
+      "mae_delta_from_all": -0.011904761904761862
+    },
+    {
+      "configuration": "without_weekday",
+      "excluded": [
+        "weekday"
+      ],
+      "mae_orders": 6.353174603174603,
+      "wape_percent": 5.542861099570697,
+      "observations": 504,
+      "mae_delta_from_all": 0.7876984126984121
+    }
+  ]
+}
