@@ -52,7 +52,7 @@ export function MonitoringHistory({ zoneId }: { zoneId: string }) {
               <small>{week.complete ? week.aboveLimit ? "Порог превышен" : "В пределах порога" : `Только ${week.days} из ${record.rule.week_days} дней — недельного вывода ещё нет`}</small>
             </article>)}</div>
             <p className="panel-copy">Сохранено {formatDateTime(record.saved_at_utc)} мск.
-              {record.orders_sources.includes("synthetic") && " Использованы синтетические заказы."}</p>
+              {record.orders_sources.some((source) => source.startsWith("synthetic")) && " Использованы синтетические заказы."}</p>
             <details className="run-technical"><summary>Правило проверки и данные для отчёта</summary>
               <p>Берём до {record.rule.window_days} последних дней подряд. Для каждой полной недели допустимый промах —
                 обычная ошибка сохранённых прогнозов × {number(record.rule.limit_factor)}.

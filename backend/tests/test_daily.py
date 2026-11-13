@@ -9,13 +9,15 @@ from unittest.mock import patch
 
 from backend.daily import daily_lock, latest_due, publish_daily, watch
 from backend.pipeline.orders import MOSCOW
+from backend.pipeline.orders import SOURCE
 from backend.pipeline.results import FileResults, ModelVersion
 
 
 def activate_test_version(data: Path, version_id: str = "test-version") -> None:
     record = {"activation_id": "20261107T000000000000Z-00000000", "action": "initialize", "version_id": version_id,
               "previous_version_id": None, "at_utc": "2026-11-07T00:00:00+00:00", "context": {}}
-    FileResults(data).activate_model(record, expected=None, model=ModelVersion({"version_id": version_id}, b"test"))
+    FileResults(data).activate_model(record, expected=None,
+                                     model=ModelVersion({"version_id": version_id, "orders_source": SOURCE}, b"test"))
 
 
 @patch.dict("os.environ", {"PULT_DATABASE_URL": ""})
@@ -103,6 +105,7 @@ class DailyTests(unittest.TestCase):
             patch("backend.daily.settle_observations"),
             patch("backend.daily.check_input_drift"),
             patch("backend.daily.maintain_models") as models,
+            patch("backend.daily.prepare_data_version"),
             patch("backend.daily.ensure_demo", return_value=None),
             patch("backend.daily.wait_until", side_effect=KeyboardInterrupt) as wait,
             redirect_stdout(io.StringIO()),

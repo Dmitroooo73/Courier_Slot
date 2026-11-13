@@ -40,3 +40,9 @@ export const featureLabels: Record<string, string> = {
   precipitation_mm: "Осадки",
   hours_with_precipitation: "Часы с осадками",
 };
+
+export function ordersSourceLabel(source: string | undefined): string {
+  if (source === "synthetic") return "синтетические заказы, архивная версия без погоды";
+  if (source === "synthetic-weather-v2") return "синтетические заказы, спрос зависит от погоды";
+  return source ?? "неизвестный источник";
+}

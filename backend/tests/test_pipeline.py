@@ -10,9 +10,11 @@ from urllib.error import HTTPError
 
 from backend.pipeline.__main__ import run
 from backend.pipeline.weather import DEMO_DATE, SNAPSHOT, daily_values, download
+from backend.tests.weather_stub import observed_stub
 
 
 @patch.dict("os.environ", {"PULT_DATABASE_URL": ""})
+@patch("backend.pipeline.weather_archive.observed_weather", observed_stub)
 class DemoTests(unittest.TestCase):
     def test_repeat_ignores_orders_after_cutoff(self):
         with TemporaryDirectory(dir=Path.cwd()) as directory, redirect_stdout(io.StringIO()):

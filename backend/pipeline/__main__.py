@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .forecast import BASELINE, forecast_cutoff, zone_forecasts
-from .orders import HISTORY_DAYS, ZONES, load_history, write_daily_orders
+from .orders import HISTORY_DAYS, SOURCE, ZONES, load_history, write_daily_orders
 from .results import FORECASTS, StorageUnavailable, latest_location, result_store
 from .weather import DEMO_DATE, MODEL, weather_for_day
 
@@ -51,7 +51,7 @@ def run(
         result = {
             "target_date": target.isoformat(),
             "forecast_cutoff": cutoff.isoformat(),
-            "orders_source": "synthetic",
+            "orders_source": SOURCE,
             "model": BASELINE,
             "reference_date": reference.isoformat(),
             "weather": {"provider": "Open-Meteo", "model": MODEL, **asdict(weather)},

@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from backend.pipeline.forecast import BASELINE
 from backend.pipeline.monitoring import RULE_VERSION as MONITORING_RULE
-from backend.pipeline.orders import ZONES
+from backend.pipeline.orders import SOURCE, ZONES
 from backend.pipeline.quality import quality_summary
 from backend.pipeline.results import FileResults, ModelVersion, PostgresResults
 
@@ -76,6 +76,23 @@ def train_first_version(store: Store, data: Path, target: date, now: datetime, a
                                reason="Первая рабочая версия обучена стандартной процедурой.")
     if not store.activate_model(record, expected=None, model=model):
         raise LifecycleConflict("Рабочая модель уже настроена.")
+    return model.metadata["version_id"]
+
+
+def train_for_data_version(store: Store, data: Path, target: date, now: datetime, actor: str) -> str | None:
+    """A new data version invalidates the working model: retrain it once with the standard procedure."""
+    active = store.active_model()
+    if active is None or store.model_metadata(active["version_id"]).get("orders_source") == SOURCE:
+        return None
+    journal: dict = {}
+    frame, future, weather = report_inputs(target, data, journal)
+    report, fitted = evaluate_report(target, frame, future, weather, journal)
+    model = make_model_version(report, *fitted, status="registered")
+    record = activation_record(model.metadata["version_id"], active_context(model, fitted[0], frame, report),
+                               action="data_version", previous=active["version_id"], actor=actor, now=now,
+                               reason=f"Новая версия данных ({SOURCE}): модель обучена заново стандартной процедурой.")
+    if not store.activate_model(record, expected=active["version_id"], model=model):
+        raise LifecycleConflict("Рабочая версия сменилась во время переобучения.")
     return model.metadata["version_id"]
 
 
@@ -308,6 +325,8 @@ def rollback(store: Store, *, expected: str, actor: str, now: datetime) -> dict:
     previous = current["previous_version_id"]
     if not previous:
         raise ValueError("Предыдущей рабочей версии нет.")
+    if store.model_metadata(previous).get("orders_source") != SOURCE:
+        raise ValueError("Предыдущая версия обучена на другой версии данных — вернуть её нельзя.")
     context = store.activation_context(previous)
     if context is None:
         raise ValueError("Для предыдущей версии не сохранён контекст прогноза.")

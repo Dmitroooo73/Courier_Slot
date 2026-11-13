@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .orders import MOSCOW, count_orders, generate_orders
+from .orders import MOSCOW, SOURCE, count_orders, ensure_layout, generate_orders, orders_directory
 from .results import FileResults, PostgresResults
 
 
@@ -31,11 +31,15 @@ def collect_closed_days(store: FileResults | PostgresResults, data: Path, now: d
     pending = store.pending_observations(now.astimezone(MOSCOW).date())
     for record in pending:
         target = date.fromisoformat(record["target_date"])
-        path = data / "raw" / "orders" / f"{target}.csv"
+        source = record["orders_source"]
+        # A forecast is compared with facts of the same data version, archived ones included.
+        path = orders_directory(data / "raw", source) / f"{target}.csv"
         if not path.is_file():
-            if record["orders_source"] != "synthetic":
+            if not source.startswith("synthetic"):
                 raise FileNotFoundError(path)
-            generate_orders(target, path)
+            if source == SOURCE:
+                ensure_layout(path.parent)
+            generate_orders(target, path, source=source)
         actuals = count_orders(target, path, set())
         store.save_observation(target, {
             **record,

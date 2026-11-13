@@ -8,12 +8,13 @@ from statistics import median
 
 from backend.modeling.features import ORDER_FEATURES, ORDER_INPUT_LAGS, features_for_day
 
-from .orders import MOSCOW, ZONES, count_orders
+from .orders import MOSCOW, SOURCE, SOURCE_MARKER, ZONES, count_orders
 from .results import FileResults, PostgresResults
 from .weather_archive import WEATHER_FEATURES, weather_history
 
 
-RULE_VERSION = "input-drift-v1"
+# v2: the reference is fixed again on the weather-aware data version; v1 reports stay as they were.
+RULE_VERSION = "input-drift-v2"
 DAY = timedelta(days=1)
 REFERENCE_DAYS = 56
 CURRENT_DAYS = 14
@@ -106,6 +107,11 @@ def window(samples: list[dict]) -> dict:
 
 def persist_input_drift(store: FileResults | PostgresResults, data: Path, now: datetime) -> dict | None:
     """Run under the daily lock. Persist one immutable report per closed date."""
+    orders = data / "raw" / "orders"
+    marker = orders / SOURCE_MARKER
+    current = marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
+    if current != SOURCE and any(orders.glob("????-??-??.csv")):
+        return None  # files of an older data version: never mix versions in one reference
     end = now.astimezone(MOSCOW).date() - DAY
     start = end - (CURRENT_DAYS - 1) * DAY
     latest = store.latest_drift(RULE_VERSION)

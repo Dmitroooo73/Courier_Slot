@@ -6,14 +6,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from backend.pipeline.orders import LEGACY_SOURCE, SOURCE
 from backend.pipeline.results import FileResults, ModelVersion
+from backend.tests.weather_stub import observed_stub
 
 
 NOW = datetime(2026, 3, 8, 1, 0, tzinfo=timezone.utc)
 
 
 def activate(store: FileResults, version_id: str, training_end: str = "2026-02-18") -> None:
-    store.save_model(ModelVersion({"version_id": version_id, "training": {"end": training_end}}, b"artifact"))
+    store.save_model(ModelVersion({"version_id": version_id, "training": {"end": training_end}, "orders_source": SOURCE},
+                                  b"artifact"))
     record = {"activation_id": f"20260101T000000000000Z-{len(store.activations(100)):08d}", "action": "initialize",
               "version_id": version_id, "previous_version_id": None, "candidate_id": None, "actor": "test",
               "reason": "", "at_utc": NOW.isoformat(), "context": {}}
@@ -97,7 +100,9 @@ def no_weather(first, last, _data, journal):
 @patch.dict("os.environ", {"PULT_DATABASE_URL": ""})
 @patch("backend.modeling.report.weather_inputs", no_weather)
 @patch("backend.modeling.lifecycle.weather_inputs", no_weather)
+@patch("backend.modeling.inference.weather_inputs", no_weather)
 @patch.dict("backend.modeling.evaluation.CATBOOST_PARAMETERS", {"iterations": 20})
+@patch("backend.pipeline.weather_archive.observed_weather", observed_stub)
 class LifecycleCycleTests(unittest.TestCase):
     def test_shift_promotes_candidate_and_rollback_restores_previous_version(self):
         from backend.modeling.demo_cycle import shift_zone
@@ -143,3 +148,38 @@ class LifecycleCycleTests(unittest.TestCase):
             self.assertEqual(store.active_model()["version_id"], first)
             self.assertEqual([item["action"] for item in store.activations()], ["rollback", "activate", "initialize"])
             self.assertEqual(store.active_model()["evaluation"]["training"]["end"], "2026-02-18")
+
+            # The saved working version predicts without refitting; every zone keeps its own explanation.
+            from backend.modeling.inference import forecast_from_saved
+
+            report = forecast_from_saved(end + timedelta(days=2), data, {}, store.model_version(first), store.active_model())
+            self.assertEqual(report["model_version_id"], first)
+            for zone in report["forecasts"]:
+                explanation = zone["explanation"]
+                self.assertEqual(max(0, round(explanation["raw_orders"])), zone["forecast_orders"], zone["zone_id"])
+                total = explanation["base_orders"] + sum(item["impact_orders"] for item in explanation["contributions"])
+                self.assertAlmostEqual(total, explanation["raw_orders"], places=6)
+
+    def test_new_data_version_retrains_once_and_blocks_rollback_to_old_data(self):
+        from backend.modeling.lifecycle import rollback, train_for_data_version
+        from backend.pipeline.orders import load_history
+
+        target = date(2026, 2, 20)
+        with TemporaryDirectory() as directory, redirect_stdout(io.StringIO()):
+            data = Path(directory)
+            store = FileResults(data)
+            load_history(target, data / "raw" / "orders", 380)
+            old = "20260101T000000000000Z-0000000000aa"
+            store.save_model(ModelVersion({"version_id": old, "orders_source": LEGACY_SOURCE,
+                                           "training": {"end": "2026-02-18"}}, b"old"))
+            record = {"activation_id": "20260101T000000000000Z-00000000", "action": "initialize", "version_id": old,
+                      "previous_version_id": None, "candidate_id": None, "actor": "test", "reason": "",
+                      "at_utc": NOW.isoformat(), "context": {}}
+            self.assertTrue(store.activate_model(record, expected=None))
+            new = train_for_data_version(store, data, target, NOW, actor="test")
+            self.assertEqual(store.active_model()["version_id"], new)
+            self.assertEqual(store.model_metadata(new)["orders_source"], SOURCE)
+            self.assertIsNone(train_for_data_version(store, data, target, NOW, actor="test"), "only once")
+            self.assertEqual([item["action"] for item in store.activations()], ["data_version", "initialize"])
+            with self.assertRaisesRegex(ValueError, "другой версии данных"):
+                rollback(store, expected=new, actor="admin:qa", now=NOW)

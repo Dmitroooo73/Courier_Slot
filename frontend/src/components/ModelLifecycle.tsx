@@ -11,7 +11,8 @@ const jobStatus: Record<CandidateJob["status"], string> = {
   rejected: "Не прошла проверку",
   failed: "Проверка прервана",
 };
-const actions = { initialize: "Первая рабочая версия", activate: "Новая версия в работе", rollback: "Возврат версии" };
+const actions = { initialize: "Первая рабочая версия", activate: "Новая версия в работе", rollback: "Возврат версии",
+  data_version: "Новая версия данных" };
 const compared: { key: ComparedVersion; label: string }[] = [
   { key: "active", label: "Прежняя рабочая версия" },
   { key: "candidate", label: "Новая версия" },

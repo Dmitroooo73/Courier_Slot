@@ -11,13 +11,13 @@ from uuid import uuid4
 
 from .modeling.inference import forecast_from_saved
 from .modeling.demo_cycle import ensure_demo
-from .modeling.lifecycle import train_first_version, update_models
+from .modeling.lifecycle import train_first_version, train_for_data_version, update_models
 from .modeling.report import FIRST_MODEL_DATE
 from .pipeline.drift import persist_input_drift
 from .pipeline.forecast import forecast_cutoff
 from .pipeline.observations import collect_closed_days, observation_record
 from .pipeline.monitoring import persist_decisions
-from .pipeline.orders import MOSCOW
+from .pipeline.orders import MOSCOW, SOURCE as ORDERS_SOURCE
 from .pipeline.results import EVALUATIONS, FileResults, PostgresResults, StorageUnavailable, latest_location, result_store
 
 
@@ -91,6 +91,12 @@ def publish_daily(target: date, data: Path, force: bool = False, *,
                 active = store.active_model()
             journal["step"] = "load_model"
             model = store.model_version(active["version_id"])
+            if model.metadata.get("orders_source") != ORDERS_SOURCE:
+                journal["step"] = "data_version"
+                train_for_data_version(store, data, target, started, actor="worker")
+                active = store.active_model()
+                journal["step"] = "load_model"
+                model = store.model_version(active["version_id"])
             report = forecast_from_saved(target, data, journal, model, active)
             published = clock()
             observation = observation_record(target, report, published)
@@ -139,6 +145,15 @@ def candidate_waiting(data: Path) -> bool:
     return job is not None and job["status"] == "queued"
 
 
+def prepare_data_version(data: Path, now: datetime) -> None:
+    """Switch the working model to the current data version before drift and monitoring read new files."""
+    store = result_store(data)
+    with result_lock(store, data):
+        version = train_for_data_version(store, data, latest_due(now), now, actor="worker")
+    if version is not None:
+        print(f"Рабочая модель переобучена на новой версии данных {ORDERS_SOURCE}: {version}.", flush=True)
+
+
 def maintain_models(data: Path, now: datetime) -> None:
     store = result_store(data)
     with result_lock(store, data):
@@ -178,6 +193,11 @@ def watch(data: Path) -> None:
         target = latest_due(now)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + DAY
         deadline = min(forecast_cutoff(target + DAY), midnight)
+        try:
+            prepare_data_version(data, now)
+        except Exception as error:
+            deadline = min(deadline, datetime.now(MOSCOW) + RETRY_DELAY)
+            print(f"Переход на новую версию данных прерван. {error}", file=sys.stderr, flush=True)
         if published_target != target:
             try:
                 publish_daily(target, data)

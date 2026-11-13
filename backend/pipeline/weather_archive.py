@@ -10,6 +10,8 @@ from .weather import HOUR_SECONDS, LOCATION, MODEL, daily_slots, download, hourl
 ENDPOINT = "https://previous-runs-api.open-meteo.com/v1/forecast"
 SUFFIX = "_previous_day2"
 LEAD_HOURS = 48
+# The latest model run for each past hour stands in for the weather that actually happened.
+OBSERVED_DIRECTORY = "observed_latest_run"
 DAY = timedelta(days=1)
 WEATHER_FEATURES = ("mean_temperature_c", "precipitation_mm", "hours_with_precipitation")
 
@@ -20,7 +22,7 @@ def utc_hours(day: date) -> range:
 
 
 def weather_history(
-    first: date, last: date, directory: Path, *, fetch_missing: bool = True
+    first: date, last: date, directory: Path, *, fetch_missing: bool = True, suffix: str = SUFFIX
 ) -> tuple[dict[date, dict[str, float | None]], int]:
     # The Moscow day starts at 21:00 UTC on the preceding date.
     first_utc = first - DAY
@@ -28,7 +30,7 @@ def weather_history(
     for path in sorted(directory.glob("????-??-??_????-??-??.json")):
         start, end = map(date.fromisoformat, path.stem.split("_"))
         if start <= last and end >= first_utc:
-            rows.update(hourly_rows(path.read_text(encoding="utf-8"), SUFFIX))
+            rows.update(hourly_rows(path.read_text(encoding="utf-8"), suffix))
 
     ranges: list[tuple[date, date]] = []
     days_to_check = (last - first_utc).days + 1 if fetch_missing else 0
@@ -46,14 +48,14 @@ def weather_history(
             {
                 **LOCATION,
                 "models": MODEL,
-                "hourly": f"temperature_2m{SUFFIX},precipitation{SUFFIX}",
+                "hourly": f"temperature_2m{suffix},precipitation{suffix}",
                 "timeformat": "unixtime",
                 "start_date": start.isoformat(),
                 "end_date": end.isoformat(),
             }
         )
         raw = download(f"{ENDPOINT}?{query}")
-        fetched = hourly_rows(raw, SUFFIX)
+        fetched = hourly_rows(raw, suffix)
         if not all(hour in fetched for hour in range(
             utc_hours(start).start, utc_hours(end).stop, HOUR_SECONDS
         )):
@@ -74,3 +76,9 @@ def weather_history(
         }
     downloaded_days = sum((end - start).days + 1 for start, end in ranges)
     return result, downloaded_days
+
+
+def observed_weather(first: date, last: date, raw: Path) -> dict[date, dict[str, float | None]]:
+    """Daily weather that happened in Moscow; it drives synthetic demand, never the model's features."""
+    history, _ = weather_history(first, last, raw / "weather" / OBSERVED_DIRECTORY, suffix="")
+    return history

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getModelVersions } from "../api/dashboard";
 import type { Forecast, ModelLifecycleInfo, ModelVersion } from "../api/dashboard";
-import { featureLabels, formatDate, formatDateTime, number } from "../format";
+import { featureLabels, formatDate, formatDateTime, number, ordersSourceLabel } from "../format";
 import type { AuthState } from "../useAuth";
 import { ModelLifecycle, versionLabel } from "./ModelLifecycle";
 
@@ -32,7 +32,7 @@ function ModelEntry({ version, linked, active = false }: { version: ModelVersion
         <p>Идентификатор версии</p><code>{version.version_id}</code>
         <p>Контрольная сумма обучающих данных</p><code>{version.dataset_sha256}</code>
         <p>Контрольная сумма модели</p><code>{version.artifact.sha256}</code>
-        <p>Источник заказов — {version.orders_source === "synthetic" ? "синтетический" : version.orders_source}. Размер модели — {number(version.artifact.bytes)} Б.</p>
+        <p>Данные — {ordersSourceLabel(version.orders_source)}. Размер модели — {number(version.artifact.bytes)} Б.</p>
         <p>Параметры</p><code>{JSON.stringify(version.parameters)}</code>
         <p>Версия признаков</p><code>{version.feature_schema_version}</code>
         <p>Окружение</p><code>{Object.entries(version.versions).map(([name, value]) => `${name} ${value}`).join(" · ")}</code>

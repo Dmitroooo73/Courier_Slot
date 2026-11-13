@@ -18,7 +18,11 @@ def main() -> None:
     reports, runs = store.import_files(data)
     print(f"Обновлено в PostgreSQL — отчёты {reports}, записи журнала {runs}.", flush=True)
     if not store.dates():
-        run(DEMO_DATE, data, fetch_weather=False)
+        try:
+            run(DEMO_DATE, data, fetch_weather=False)
+        except (OSError, ValueError) as error:
+            # The quick demo needs observed weather; without it the worker publishes the first forecast.
+            print(f"Демопрогноз не подготовлен: {error}", flush=True)
 
 
 if __name__ == "__main__":

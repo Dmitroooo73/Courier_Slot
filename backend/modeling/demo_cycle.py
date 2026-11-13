@@ -18,13 +18,13 @@ from tempfile import TemporaryDirectory
 
 from backend.pipeline.monitoring import RULE_VERSION as MONITORING_RULE, persist_decisions
 from backend.pipeline.observations import collect_closed_days
-from backend.pipeline.orders import MOSCOW, ZONES, load_history
+from backend.pipeline.orders import MOSCOW, SOURCE, SOURCE_MARKER, ZONES, load_history
 from backend.pipeline.results import EVALUATIONS, FileResults, result_store
 
 from .lifecycle import RULES, request_candidate, rollback, train_first_version, update_models
 
 
-DEMO_VERSION = "lifecycle-demo-v1"
+DEMO_VERSION = "lifecycle-demo-v2"  # v2: replay on weather-aware synthetic orders
 FIRST_TARGET = date(2026, 10, 13)
 MANUAL_CHECK = date(2026, 10, 19)
 SHIFT_START = date(2026, 10, 20)
@@ -53,8 +53,13 @@ def moscow(day: date, hour: int, minute: int) -> datetime:
 def prepare_world(source: Path, world: Path) -> None:
     orders = world / "raw" / "orders"
     orders.mkdir(parents=True)
-    for path in (source / "raw" / "orders").glob("????-??-??.csv"):
-        shutil.copy2(path, orders / path.name)
+    (orders / SOURCE_MARKER).write_text(SOURCE + "\n", encoding="utf-8")
+    marker = source / "raw" / "orders" / SOURCE_MARKER
+    if marker.is_file() and marker.read_text(encoding="utf-8").strip() == SOURCE:
+        for path in (source / "raw" / "orders").glob("????-??-??.csv"):
+            shutil.copy2(path, orders / path.name)
+        if (source / "raw" / "order_events").is_dir():
+            shutil.copytree(source / "raw" / "order_events", world / "raw" / "order_events")
     if (source / "raw" / "weather").is_dir():
         shutil.copytree(source / "raw" / "weather", world / "raw" / "weather")
     # Make sure every closed day of the replay exists before the shift is applied.

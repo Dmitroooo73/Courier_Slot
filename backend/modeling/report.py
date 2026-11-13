@@ -4,7 +4,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from backend.pipeline.forecast import BASELINE, forecast_cutoff, zone_forecasts
-from backend.pipeline.orders import SEED, load_history
+from backend.pipeline.orders import SEED, SOURCE, load_history, orders_directory
 from backend.pipeline.quality import quality_summary
 from backend.pipeline.weather import MODEL as WEATHER_MODEL
 from backend.pipeline.weather_archive import LEAD_HOURS, WEATHER_FEATURES, weather_history
@@ -17,8 +17,8 @@ HISTORY_DAYS = 365
 FIRST_MODEL_DATE = date(2025, 4, 1)
 
 
-def report_inputs(target: date, data: Path, journal: dict):
-    history =order_inputs(target, data, HISTORY_DAYS, journal)
+def report_inputs(target: date, data: Path, journal: dict, *, source: str = SOURCE):
+    history = order_inputs(target, data, HISTORY_DAYS, journal, source=source)
     first = min(history) + timedelta(days=max(LAGS))
     weather = weather_inputs(first, target, data, journal)
     journal["data_quality"] = quality_summary(history, weather)
@@ -39,15 +39,16 @@ def training_frame(history: dict, weather: dict, first: date):
     return pd.DataFrame.from_records(rows).astype(dict.fromkeys(WEATHER_FEATURES, "float64"))
 
 
-def order_inputs(target: date, data: Path, days: int, journal: dict) -> dict:
+def order_inputs(target: date, data: Path, days: int, journal: dict, *, source: str = SOURCE) -> dict:
     journal["step"] = "orders"
-    history, new_days = load_history(target, data / "raw" / "orders", days)
+    history, new_days = load_history(target, orders_directory(data / "raw", source), days, source=source)
     journal["orders"] = {
         "first_day": min(history).isoformat(),
         "last_day": max(history).isoformat(),
         "generated_days": new_days,
         "reused_days": len(history) - new_days,
         "new_day_source": "synthetic_event_log",
+        "orders_source": source,
     }
     return history
 
@@ -88,13 +89,13 @@ def model_parameters(half_life: float | None = None) -> dict:
             "catboost": {**CATBOOST_PARAMETERS, **weights}}
 
 
-def build_report(target: date, data: Path, journal: dict) -> tuple[dict, tuple]:
-    frame, future, weather = report_inputs(target, data, journal)
-    return evaluate_report(target, frame, future, weather, journal)
+def build_report(target: date, data: Path, journal: dict, *, source: str = SOURCE) -> tuple[dict, tuple]:
+    frame, future, weather = report_inputs(target, data, journal, source=source)
+    return evaluate_report(target, frame, future, weather, journal, source=source)
 
 
 def evaluate_report(target: date, frame, future, weather: dict, journal: dict, *,
-                    half_life: float | None = None) -> tuple[dict, tuple]:
+                    half_life: float | None = None, source: str = SOURCE) -> tuple[dict, tuple]:
     from .evaluation import evaluate
 
     evaluation, fitted = evaluate(frame, future, half_life=half_life)
@@ -106,7 +107,7 @@ def evaluate_report(target: date, frame, future, weather: dict, journal: dict, *
     report = {
         "target_date": target.isoformat(),
         "forecast_cutoff": forecast_cutoff(target).isoformat(),
-        "orders_source": "synthetic",
+        "orders_source": source,
         "historical_rows": len(frame),
         "training": {"start": frame["date"].min().isoformat(), "end": frame["date"].max().isoformat(), "rows": len(frame)},
         "dataset_sha256": dataset_digest(frame),
