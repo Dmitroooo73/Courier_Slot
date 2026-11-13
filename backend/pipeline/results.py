@@ -211,6 +211,15 @@ class FileResults:
             self.save_model(model)
         write_json(self.directory / "model_candidates" / (job["candidate_id"] + ".json"), job)
 
+    def beat(self, payload: dict) -> None:
+        write_json(self.directory / "worker_heartbeat.json", payload)
+
+    def heartbeat(self) -> dict | None:
+        try:
+            return read_artifact(self.directory / "worker_heartbeat.json")
+        except FileNotFoundError:
+            return None
+
     def save_experiment(self, experiment: dict) -> None:
         path = self.directory / "experiments" / (experiment["experiment_id"] + ".json")
         if path.exists():
@@ -333,6 +342,12 @@ class PostgresResults:
                     candidate_id text PRIMARY KEY,
                     trigger_key text NOT NULL UNIQUE,
                     status text NOT NULL CHECK (status IN ({", ".join(f"'{status}'" for status in CANDIDATE_STATUSES)})),
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS worker_heartbeat (
+                    singleton boolean PRIMARY KEY CHECK (singleton),
                     payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
                 )
             """)
@@ -627,6 +642,20 @@ class PostgresResults:
             if model is not None:
                 self.insert_model(connection, model)
             self.write_candidate(connection, job)
+
+    def beat(self, payload: dict) -> None:
+        from psycopg.types.json import Jsonb
+
+        with self.connection() as connection:
+            connection.execute("""
+                INSERT INTO worker_heartbeat (singleton, payload) VALUES (true, %s)
+                ON CONFLICT (singleton) DO UPDATE SET payload = EXCLUDED.payload
+            """, (Jsonb(payload),))
+
+    def heartbeat(self) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute("SELECT payload FROM worker_heartbeat WHERE singleton").fetchone()
+        return row[0] if row else None
 
     def save_experiment(self, experiment: dict) -> None:
         """Journal entries are immutable: an existing id is never overwritten."""

@@ -11,27 +11,29 @@ function label(trial: ExperimentTrial): string {
   return modelName(trial.model) + (trial.uses_weather ? " с погодой" : " без погоды") + ` (${params(trial)})`;
 }
 
-export function ExperimentJournal() {
+export function ExperimentJournal({ refreshKey = 0 }: { refreshKey?: number }) {
   const [experiments, setExperiments] = useState<Experiment[] | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
-    void getExperiments(controller.signal).then(setExperiments).catch(() => {
+    void getExperiments(controller.signal).then((items) => { setExperiments(items); setFailed(false); }).catch(() => {
       if (!controller.signal.aborted) setFailed(true);
     });
     return () => controller.abort();
-  }, []);
+  }, [refreshKey, attempt]);
 
-  if (failed) return null;
+  const retry = <button className="refresh-button" onClick={() => setAttempt((value) => value + 1)}>Повторить</button>;
   const experiment = experiments?.find((item) => item.experiment_id === selectedId) ?? experiments?.[0];
   if (!experiment) {
     return <section className="panel experiments-panel" aria-labelledby="experiments-title">
       <p className="eyebrow">ЖУРНАЛ ЭКСПЕРИМЕНТОВ</p>
       <h2 id="experiments-title">Подбор параметров</h2>
-      <p className="panel-copy">{experiments === null ? "Загружаем журнал…" : <>Экспериментов пока нет. Запуск:
-        <code> docker compose exec worker python -m backend.modeling.tuning</code></>}</p>
+      {failed ? <p role="alert" className="panel-copy">Не удалось загрузить журнал. {retry}</p>
+        : <p className="panel-copy">{experiments === null ? "Загружаем журнал…" : <>Экспериментов пока нет. Запуск:
+          <code> docker compose exec worker python -m backend.modeling.tuning</code></>}</p>}
     </section>;
   }
   const trials = [...experiment.trials].sort((a, b) => a.mae_orders - b.mae_orders);
@@ -43,7 +45,9 @@ export function ExperimentJournal() {
     <div className="panel-heading">
       <div>
         <p className="eyebrow">ЖУРНАЛ ЭКСПЕРИМЕНТОВ</p>
-        <h2 id="experiments-title">Подбор параметров: лучший — {label(best)}</h2>
+        <h2 id="experiments-title">{experiment.best_trial === experiment.default_trial
+          ? "Дополнительная настройка не улучшила прогноз"
+          : `Настройка улучшила прогноз: ${label(best)}`}</h2>
       </div>
       {experiments && experiments.length > 1 && <label className="date-control">
         <span>Эксперимент</span>
@@ -52,9 +56,10 @@ export function ExperimentJournal() {
         </select>
       </label>}
     </div>
+    {failed && <p role="alert" className="panel-copy">Журнал не обновился — показана последняя загруженная версия. {retry}</p>}
     <p className="panel-copy experiments-result">
       {experiment.best_trial === experiment.default_trial
-        ? "Лучшим остался вариант по умолчанию — подбор его подтвердил. "
+        ? `Лучшим остался вариант по умолчанию: ${label(best)}. `
         : `Найденный вариант ${gain >= 0 ? "лучше" : "хуже"} параметров по умолчанию на ${number(Math.abs(Math.round(gain * 10) / 10))}%. `}
       На отложенных днях {formatDate(holdout.start, true)} — {formatDate(holdout.end, true)}, которые в подборе не участвовали,
       его промах <strong>{number(holdout.best.mae_orders)}</strong> заказа

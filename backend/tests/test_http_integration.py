@@ -403,6 +403,12 @@ class HttpIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(data["dates"], [])
         self.assertIsNone(data["forecast"])
+        self.assertEqual((data["schedule"]["latest_forecast"], data["schedule"]["worker_silent"]), (None, True))
+        with self.database.connection() as db:
+            db.execute("DELETE FROM worker_heartbeat")
+        from datetime import datetime, timezone
+        self.database.beat({"at_utc": datetime.now(timezone.utc).isoformat(), "state": "waiting"})
+        self.assertFalse(client.call("/api/dashboard")[1]["schedule"]["worker_silent"])
         self.assertEqual(client.call("/api/forecasts")[0], 404)
         self.assertEqual(client.call("/api/dashboard?date=2026-99-99")[0], 422)
         self.assertEqual(client.call("/api/dashboard?date=2026-11-11")[0], 404)

@@ -63,7 +63,7 @@ function ZoneDetails({ zone, forecast }: { zone: ZoneForecast; forecast: Forecas
       </div>
       <div className="capacity">
         <div className="capacity-label">
-          <span>Плановая мощность</span>
+          <span>Команда успеет за день</span>
           <strong>{number(zone.capacity_orders)}</strong>
         </div>
         <div className={"capacity-track" + (gap < 0 ? " capacity-risk" : "")} aria-hidden="true">
@@ -87,7 +87,7 @@ function ZoneDetails({ zone, forecast }: { zone: ZoneForecast; forecast: Forecas
       </dl>
       <ForecastExplanation zone={zone} />
       <a className="zone-quality-link" href="#quality">График факта и прогноза <span aria-hidden="true">→</span></a>
-      <p className="zone-note">Отсечка данных {formatDateTime(forecast.forecast_cutoff)} мск</p>
+      <p className="zone-note">Учтены данные, известные к {formatDateTime(forecast.forecast_cutoff)} мск. Мощность — учебное значение.</p>
     </section>
   );
 }
@@ -208,7 +208,9 @@ export function Dashboard() {
               view.id === "admin" ? "Пользователи и роли" :
               view.id === "runs" ? "История обновления данных и публикации прогнозов" :
               view.id === "monitoring" ? "Проверки прогноза и входных данных" :
-              forecast ? "Прогноз на " + formatDate(forecast.target_date) : "Суточный прогноз заказов готовой еды"}</p>
+              forecast ? "Прогноз на " + formatDate(forecast.target_date) +
+                (forecast.published_at_utc ? " · рассчитан " + formatDateTime(forecast.published_at_utc) + " мск" : "")
+                : "Суточный прогноз заказов готовой еды"}</p>
           </div>
           {!accountView && view.id !== "courier" && <div className="hero-actions">
             {view.id !== "runs" && (view.id !== "monitoring" || monitorMode === "demo") && (
@@ -231,10 +233,19 @@ export function Dashboard() {
           <span><i />{forecast ? ordersSourceLabel(forecast.orders_source).replace(/^с/, "С") : "Синтетические заказы"}</span>
           <NowWeather />
           <span aria-live="polite">
-            {updatedAt ? "Данные получены в " + formatTime(updatedAt) + " мск" : "Подключение к локальному API"}
+            {updatedAt ? "Экран обновлён в " + formatTime(updatedAt) + " мск" : "Подключение к локальному API"}
           </span>
         </div>}
         {!accountView && error && <p className="notice" role="alert">{error}</p>}
+        {!accountView && data?.schedule && (data.schedule.forecast_late || data.schedule.worker_silent) && <div className="schedule-alert" role="alert">
+          <strong>{data.schedule.forecast_late
+            ? `Прогноз на ${formatDate(data.schedule.expected_forecast)} ещё не выпущен`
+            : "Планировщик не выходит на связь"}</strong>
+          {data.schedule.worker_silent
+            ? (data.schedule.worker_seen_utc ? `Последний сигнал — ${formatDateTime(data.schedule.worker_seen_utc)} мск. ` : "Сигналов от планировщика пока не было. ")
+              + "Новые прогнозы и сверки не выполняются; на экране последние сохранённые результаты."
+            : `Планировщик работает, но расчёт задерживается. Показан прогноз на ${data.schedule.latest_forecast ? formatDate(data.schedule.latest_forecast) : "—"}; причина — во вкладке «Журнал».`}
+        </div>}
         {view.id === "account" && <AccountPanel auth={auth} zones={zones} />}
         {view.id === "admin" && <AdminPanel auth={auth} zones={zones} />}
         {view.id === "courier" && <CourierPanel forecast={forecast} selected={selected} onSelect={setZoneId} />}
@@ -297,7 +308,7 @@ export function Dashboard() {
               <h2>Средний промах — {number(metrics.holdout.selected.mae_orders)} заказа</h2>
               <p className="panel-copy">{forecast?.forecast_mode === "saved_model"
                 ? "Это результат исходной проверки модели. Фактическую ошибку новых прогнозов можно посмотреть в мониторинге после закрытия суток."
-                : "Столько заказов в среднем составляла разница между прогнозом и фактом в одной зоне за день."}</p>
+                : `Обычно прогноз ошибался примерно на ${number(Math.round(metrics.holdout.selected.mae_orders))} заказов в зоне за день — на проверке ${formatDate(metrics.holdout.start, true)} — ${formatDate(metrics.holdout.end, true)}.`}</p>
               {metrics.promotion && <p className="quality-promotion"><strong>Почему эта версия в работе.</strong>{" "}
                 На контрольной неделе {formatDate(metrics.promotion.control.start, true)} — {formatDate(metrics.promotion.control.end, true)} она
                 промахивалась на {number(metrics.promotion.scores.candidate.mae_orders)} заказа против{" "}
@@ -316,7 +327,8 @@ export function Dashboard() {
                 ошибки в ID, зоне и времени заказа останавливают публикацию.</p>
             </details>}
           </section>}
-          <ModelRegistry key={data?.forecast_model?.version_id ?? "archive"} forecast={forecast} selected={data?.forecast_model} auth={auth} />
+          <ModelRegistry key={data?.forecast_model?.version_id ?? "archive"} forecast={forecast} selected={data?.forecast_model} auth={auth}
+            refreshKey={updatedAt?.getTime() ?? 0} />
           <section className="panel history-panel">
             <div className="panel-heading">
               <div><p className="eyebrow">02 / ПРОВЕРКА</p><h2>Факт и прогноз</h2></div>
@@ -342,7 +354,7 @@ export function Dashboard() {
             ) : <p className="empty-panel">Запусти <code>python -X utf8 -m backend.modeling</code> из окружения проекта.</p>}
           </section>
           <FeatureImportance key={forecast?.target_date} windows={metrics?.feature_importance ?? []} />
-          <ExperimentJournal />
+          <ExperimentJournal refreshKey={updatedAt?.getTime() ?? 0} />
           <WhatIf key={selectionKey} curves={metrics?.scenarios?.[selected?.zone_id ?? ""] ?? []} zonePicker={zonePicker} />
         </div>}
 

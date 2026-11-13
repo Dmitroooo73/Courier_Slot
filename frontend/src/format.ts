@@ -23,7 +23,7 @@ export function number(value: number): string {
 }
 
 export function modelName(model: string): string {
-  if (model === "seasonal_naive_7d") return "Сезонная база";
+  if (model === "seasonal_naive_7d") return "Как неделю назад";
   if (model === "ridge") return "Ridge";
   if (model === "catboost") return "CatBoost";
   return model;

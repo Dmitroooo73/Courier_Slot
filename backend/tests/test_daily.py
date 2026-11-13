@@ -106,6 +106,7 @@ class DailyTests(unittest.TestCase):
             patch("backend.daily.check_input_drift"),
             patch("backend.daily.maintain_models") as models,
             patch("backend.daily.prepare_data_version"),
+            patch("backend.daily.beat"),
             patch("backend.daily.ensure_demo", return_value=None),
             patch("backend.daily.wait_until", side_effect=KeyboardInterrupt) as wait,
             redirect_stdout(io.StringIO()),

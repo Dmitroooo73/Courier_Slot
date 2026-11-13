@@ -28,7 +28,7 @@ export function ForecastExplanation({ zone }: { zone: ZoneForecast }) {
         <p className="explanation-note">Объяснение появится после повторного расчёта этой даты.</p>
       ) : explanation.method === "seasonal_naive_7d" ? (
         <p className="explanation-note">
-          Сезонная база берёт факт за тот же день прошлой недели
+          Прогноз «как неделю назад» берёт факт за тот же день прошлой недели
           {explanation.reference_date ? " (" + formatDate(explanation.reference_date, true) + ")" : ""}.
           {" В этот день было "}<strong>{number(explanation.base_orders)}</strong> заказов.
         </p>

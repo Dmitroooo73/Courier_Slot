@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -10,6 +10,26 @@ from backend.pipeline.orders import ZONES
 from backend.pipeline.results import result_store
 from backend.services.dashboard import available_dates, read_forecast, recent_runs
 from backend.services.weather_now import WeatherUnavailable, current_weather
+
+LATE_AFTER = timedelta(minutes=30)
+WORKER_SILENT_AFTER = timedelta(minutes=10)
+
+
+def schedule(store, dates: list, now: datetime | None = None) -> dict:
+    """Is tonight's forecast out and is the worker alive? The page shows a warning when not."""
+    from backend.daily import latest_due
+    from backend.pipeline.forecast import forecast_cutoff
+    from backend.pipeline.orders import MOSCOW
+
+    now = (now or datetime.now(timezone.utc)).astimezone(MOSCOW)
+    expected = latest_due(now)
+    latest = dates[0] if dates else None
+    beat = store.heartbeat()
+    seen = datetime.fromisoformat(beat["at_utc"]) if beat else None
+    return {"expected_forecast": expected.isoformat(), "latest_forecast": latest.isoformat() if latest else None,
+            "forecast_late": (latest is None or latest < expected) and now >= forecast_cutoff(expected) + LATE_AFTER,
+            "worker_seen_utc": beat["at_utc"] if beat else None,
+            "worker_silent": seen is None or now - seen > WORKER_SILENT_AFTER}
 
 
 router = APIRouter(prefix="/api", tags=["Пульт доставки"])
@@ -57,6 +77,7 @@ def dashboard(directory: DataDirectory, target: TargetDate = None) -> dict:
         "monitoring_decisions": store.latest_decisions(RULE_VERSION),
         "input_drift": store.latest_drift(DRIFT_RULE_VERSION),
         "forecast_model": forecast_model,
+        "schedule": schedule(store, dates),
     }
 
 

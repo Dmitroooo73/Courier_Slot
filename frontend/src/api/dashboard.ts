@@ -29,6 +29,7 @@ export interface Forecast {
   uses_weather?: boolean;
   model_version_id?: string | null;
   forecast_mode?: "saved_model";
+  published_at_utc?: string;
   weather: Weather;
   forecasts: ZoneForecast[];
 }
@@ -315,6 +316,13 @@ export interface DashboardData {
   monitoring_decisions?: MonitoringDecision[];
   input_drift?: InputDrift | null;
   forecast_model?: ModelVersion | null;
+  schedule?: {
+    expected_forecast: string;
+    latest_forecast: string | null;
+    forecast_late: boolean;
+    worker_seen_utc: string | null;
+    worker_silent: boolean;
+  };
 }
 
 export interface WeatherNow {
@@ -325,6 +333,8 @@ export interface WeatherNow {
   description: string;
   observed_at: string;
   stale: boolean;
+  refresh_failed?: boolean;
+  age_minutes?: number;
 }
 
 export async function getWeatherNow(signal: AbortSignal): Promise<WeatherNow> {

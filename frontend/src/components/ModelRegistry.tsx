@@ -41,7 +41,9 @@ function ModelEntry({ version, linked, active = false }: { version: ModelVersion
   </details>;
 }
 
-export function ModelRegistry({ forecast, selected, auth }: { forecast?: Forecast | null; selected?: ModelVersion | null; auth: AuthState }) {
+export function ModelRegistry({ forecast, selected, auth, refreshKey = 0 }: {
+  forecast?: Forecast | null; selected?: ModelVersion | null; auth: AuthState; refreshKey?: number;
+}) {
   const [records, setRecords] = useState<ModelVersion[]>([]);
   const [active, setActive] = useState<ModelVersion | null>(null);
   const [lifecycle, setLifecycle] = useState<ModelLifecycleInfo | null>(null);
@@ -68,6 +70,19 @@ export function ModelRegistry({ forecast, selected, auth }: { forecast?: Forecas
     });
     return () => controller.abort();
   }, [cursor, attempt]);
+
+  useEffect(() => {
+    if (!refreshKey) return;
+    const controller = new AbortController();
+    void getModelVersions(null, controller.signal).then(page => {
+      if (controller.signal.aborted) return;
+      setActive(page.active_version);
+      if (page.lifecycle) setLifecycle(page.lifecycle);
+      setRecords(previous => [...page.versions.filter(version => !previous.some(item => item.version_id === version.version_id)), ...previous]);
+      setError(false);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [refreshKey]);
 
   const checking = lifecycle?.candidates[0]?.status === "queued" || lifecycle?.candidates[0]?.status === "training";
   useEffect(() => {

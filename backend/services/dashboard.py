@@ -40,6 +40,8 @@ def read_forecast(directory: Path, target: date) -> tuple[dict, dict | None]:
             forecast["model_version_id"] = report["model_version_id"]
         if "forecast_mode" in report:
             forecast["forecast_mode"] = report["forecast_mode"]
+        if "published_at_utc" in report:
+            forecast["published_at_utc"] = report["published_at_utc"]
         metrics = {
             "validation": report["validation"],
             "selected": report["selected"],

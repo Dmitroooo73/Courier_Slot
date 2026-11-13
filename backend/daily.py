@@ -99,6 +99,7 @@ def publish_daily(target: date, data: Path, force: bool = False, *,
                 model = store.model_version(active["version_id"])
             report = forecast_from_saved(target, data, journal, model, active)
             published = clock()
+            report = {**report, "published_at_utc": published.astimezone(timezone.utc).isoformat()}
             observation = observation_record(target, report, published)
             journal.update(
                 status="success",
@@ -134,6 +135,21 @@ def wait_until(deadline: datetime, wake: Callable[[], bool] | None = None) -> No
         sleep(min(remaining, 60))
         if wake is not None and wake():
             return
+
+
+def beat(data: Path, now: datetime, state: str, next_check: datetime | None = None) -> None:
+    """Heartbeat for the dashboard and the container healthcheck; never stops the schedule."""
+    payload = {"at_utc": now.astimezone(timezone.utc).isoformat(), "state": state,
+               "next_check_utc": next_check.astimezone(timezone.utc).isoformat() if next_check else None}
+    try:
+        result_store(data).beat(payload)
+    except (OSError, StorageUnavailable):
+        pass
+
+
+def waiting(data: Path, deadline: datetime) -> bool:
+    beat(data, datetime.now(timezone.utc), "waiting", deadline)
+    return candidate_waiting(data)
 
 
 def candidate_waiting(data: Path) -> bool:
@@ -190,6 +206,7 @@ def watch(data: Path) -> None:
     demo_checked_on = None
     while True:
         now = datetime.now(MOSCOW)
+        beat(data, now, "working")
         target = latest_due(now)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + DAY
         deadline = min(forecast_cutoff(target + DAY), midnight)
@@ -236,7 +253,8 @@ def watch(data: Path) -> None:
             except Exception as error:
                 print(f"Учебный цикл не подготовлен. {error}", file=sys.stderr, flush=True)
         print(f"Следующая проверка в {deadline:%d.%m.%Y %H:%M:%S} мск.", flush=True)
-        wait_until(deadline, lambda: candidate_waiting(data))
+        beat(data, datetime.now(MOSCOW), "waiting", deadline)
+        wait_until(deadline, lambda: waiting(data, deadline))
 
 
 def main() -> int:
