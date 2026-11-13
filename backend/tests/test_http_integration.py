@@ -107,6 +107,52 @@ class HttpIntegrationTests(unittest.TestCase):
             db.execute("DELETE FROM forecast_observations")
             db.execute("DELETE FROM drift_reports")
             db.execute("DELETE FROM drift_references")
+            db.execute("DELETE FROM model_versions")
+
+    def test_registry_reads_metadata_and_failed_publication_rolls_back_model(self):
+        from datetime import date
+
+        from backend.pipeline.results import EVALUATIONS, ModelVersion, StorageUnavailable
+
+        target = date(2026, 11, 13)
+        first_id = "20261113T120000000000Z-000000000001"
+        second_id = "20261113T120000000000Z-000000000002"
+        stored = ModelVersion({"version_id": first_id, "status": "registered"}, b"test artifact")
+        failed = ModelVersion({"version_id": second_id, "status": "published"}, b"test artifact 2")
+        self.database.save_model(stored)
+        run = {"run_id": "test-registry-transaction"}
+        self.database.save_run(run)
+        try:
+            with self.assertRaises(StorageUnavailable):
+                self.database.publish(EVALUATIONS, target, {"model_version_id": second_id}, run, model=failed)
+            self.assertFalse(self.database.has(EVALUATIONS, target))
+            with self.assertRaises(FileNotFoundError):
+                self.database.model_version(second_id)
+            self.assertEqual(self.database.model_version(first_id), stored)
+
+            client = Client(self.base)
+            status, body, _ = client.call("/api/models?limit=1")
+            self.assertEqual(status, 200)
+            self.assertEqual(body, {"versions": [stored.metadata], "next_before": None})
+            self.assertEqual(client.call(f"/api/models?before={first_id}")[1]["versions"], [])
+            self.assertEqual(client.call("/api/models?before=bad")[0], 422)
+
+            report = {"target_date": target.isoformat(), "model_version_id": second_id,
+                      "selected": {"model": "ridge", "uses_weather": False},
+                      "forecast_cutoff": "2026-11-12T20:00:00+03:00", "orders_source": "synthetic",
+                      "weather": {}, "forecasts": [], "validation": [], "holdout": {}}
+            self.database.publish(EVALUATIONS, target, report, model=failed)
+            status, dashboard, _ = client.call(f"/api/dashboard?date={target}")
+            self.assertEqual(status, 200)
+            self.assertEqual(dashboard["forecast"]["model_version_id"], second_id)
+            self.assertEqual(dashboard["forecast_model"], failed.metadata)
+            status, page, _ = client.call("/api/models?limit=1")
+            self.assertEqual((status, page["next_before"]), (200, second_id))
+            self.assertEqual(client.call(f"/api/models?before={second_id}")[1]["versions"], [stored.metadata])
+        finally:
+            with self.database.connection() as connection:
+                connection.execute("DELETE FROM pipeline_runs WHERE run_id = %s", (run["run_id"],))
+                connection.execute("DELETE FROM forecast_reports WHERE kind = %s AND target_date = %s", (EVALUATIONS, target))
 
     def test_dashboard_reads_saved_drift_and_repeat_preserves_the_report(self):
         from backend.pipeline.drift import RULE_VERSION, persist_input_drift

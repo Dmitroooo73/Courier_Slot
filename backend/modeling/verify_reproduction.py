@@ -19,7 +19,7 @@ def main() -> None:
         data = Path(temporary)
         copytree(args.data_dir / "raw" / "weather", data / "raw" / "weather")
         journal = {}
-        rebuilt = build_report(args.date, data, journal)
+        rebuilt, _ = build_report(args.date, data, journal)
         for key in ("dataset_sha256", "selected", "forecasts", "validation", "holdout", "scenarios", "parameters", "versions"):
             if rebuilt[key] != saved[key]:
                 raise ValueError(f"Воспроизведение не совпало: {key}")

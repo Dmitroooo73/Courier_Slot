@@ -19,6 +19,7 @@ def observation_record(target: date, report: dict, published: datetime) -> dict 
         "observed_at_utc": None,
         "model": selected["model"],
         "uses_weather": selected["uses_weather"],
+        "model_version_id": report.get("model_version_id"),
         "orders_source": report["orders_source"],
         "forecasts": {zone["zone_id"]: zone["forecast_orders"] for zone in report["forecasts"]},
         "validation_mae": {zone: score["mae_orders"] for zone, score in validation["by_zone"].items()},

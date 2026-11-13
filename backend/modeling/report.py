@@ -68,21 +68,22 @@ def model_parameters() -> dict:
     return {BASELINE: {"lag_days": 7}, "ridge": RIDGE_PARAMETERS, "catboost": CATBOOST_PARAMETERS}
 
 
-def build_report(target: date, data: Path, journal: dict) -> dict:
+def build_report(target: date, data: Path, journal: dict) -> tuple[dict, tuple]:
     from .evaluation import evaluate
 
     frame, future, weather = report_inputs(target, data, journal)
-    evaluation = evaluate(frame, future)
+    evaluation, fitted = evaluate(frame, future)
     forecasts = zone_forecasts(evaluation.pop("forecast"))
     explanations = evaluation.pop("explanations")
     for forecast in forecasts:
         forecast["explanation"] = explanations[forecast["zone_id"]]
     missing_weather = sum(None in weather[day].values() for day in frame["date"].unique())
-    return {
+    report = {
         "target_date": target.isoformat(),
         "forecast_cutoff": forecast_cutoff(target).isoformat(),
         "orders_source": "synthetic",
         "historical_rows": len(frame),
+        "training": {"start": frame["date"].min().isoformat(), "end": frame["date"].max().isoformat(), "rows": len(frame)},
         "dataset_sha256": dataset_digest(frame),
         "seed": SEED,
         "versions": model_versions(),
@@ -103,3 +104,4 @@ def build_report(target: date, data: Path, journal: dict) -> dict:
         **evaluation,
         "forecasts": forecasts,
     }
+    return report, fitted

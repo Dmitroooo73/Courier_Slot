@@ -89,7 +89,8 @@ def predict_explained(
 
 
 def forecast_details(
-    model: str, uses_weather: bool, train: pd.DataFrame, test: pd.DataFrame, *, include_scenarios: bool = False
+    model: str, uses_weather: bool, train: pd.DataFrame, test: pd.DataFrame, *,
+    include_scenarios: bool = False, fitted: tuple | None = None,
 ) -> tuple[list[int], list[dict], dict[str, list[dict]]]:
     if model == BASELINE:
         columns = ["orders_lag_7"]
@@ -103,7 +104,7 @@ def forecast_details(
             for day, count in zip(test["date"], counts, strict=True)
         ]
     else:
-        estimator, columns = fit_model(model, uses_weather, train)
+        estimator, columns = fitted if fitted is not None else fit_model(model, uses_weather, train)
 
         def predict_rows(rows):
             return order_counts(estimator.predict(rows[columns]))
@@ -161,7 +162,7 @@ def importance_for_window(model: str, uses_weather: bool, train: pd.DataFrame, v
     ]
 
 
-def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> dict:
+def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> tuple[dict, tuple]:
     dates = sorted(frame["date"].unique())
     development = dates[-WINDOW_DAYS * (VALIDATION_WINDOWS + 1) : -WINDOW_DAYS]
     windows = [
@@ -222,8 +223,11 @@ def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> dict:
             holdout["date"], holdout["zone_id"], observed, predicted, baseline, strict=True
         )
     ]
-    forecast, explanations, scenarios = forecast_details(**selected, train=frame, test=future, include_scenarios=True)
-    return {
+    fitted = (None, ["orders_lag_7"]) if best["model"] == BASELINE else fit_model(**selected, train=frame)
+    forecast, explanations, scenarios = forecast_details(
+        **selected, train=frame, test=future, include_scenarios=True, fitted=fitted,
+    )
+    result = {
         "validation": comparison,
         "feature_importance": importance,
         "scenarios": scenarios,
@@ -239,3 +243,4 @@ def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> dict:
         "forecast": dict(zip(future["zone_id"], forecast, strict=True)),
         "explanations": dict(zip(future["zone_id"], explanations, strict=True)),
     }
+    return result, fitted

@@ -7,6 +7,7 @@ import { HistoryChart } from "../components/HistoryChart";
 import { InputDrift } from "../components/InputDrift";
 import { LiveMonitoring } from "../components/LiveMonitoring";
 import { ModelTable } from "../components/ModelTable";
+import { ModelRegistry } from "../components/ModelRegistry";
 import { Monitoring } from "../components/Monitoring";
 import { ZoneMap } from "../components/ZoneMap";
 import { ZonePicker } from "../components/ZonePicker";
@@ -305,6 +306,7 @@ export function Dashboard() {
                 ошибки в ID, зоне и времени заказа останавливают публикацию.</p>
             </details>}
           </section>}
+          <ModelRegistry key={data?.forecast_model?.version_id ?? "archive"} forecast={forecast} selected={data?.forecast_model} />
           <section className="panel history-panel">
             <div className="panel-heading">
               <div><p className="eyebrow">02 / ПРОВЕРКА</p><h2>Факт и прогноз</h2></div>

@@ -1,5 +1,7 @@
 import json
+from base64 import b64decode, b64encode
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date
 from os import getenv
 from pathlib import Path
@@ -10,6 +12,12 @@ from .storage import write_json
 FORECASTS = "forecasts"
 EVALUATIONS = "evaluations"
 REPORT_KINDS = (FORECASTS, EVALUATIONS)
+
+
+@dataclass(frozen=True)
+class ModelVersion:
+    metadata: dict
+    artifact: bytes
 
 
 class InvalidArtifact(ValueError):
@@ -121,9 +129,29 @@ class FileResults:
         if not report_path.exists():
             write_json(report_path, report)
 
+    def save_model(self, model: ModelVersion) -> None:
+        path = self.directory / "model_registry" / (model.metadata["version_id"] + ".json")
+        if not path.exists():
+            write_json(path, {"metadata": model.metadata, "artifact": b64encode(model.artifact).decode("ascii")})
+
+    def model_version(self, version_id: str) -> ModelVersion:
+        bundle = read_artifact(self.directory / "model_registry" / (version_id + ".json"))
+        return ModelVersion(bundle["metadata"], b64decode(bundle["artifact"], validate=True))
+
+    def model_versions(self, limit: int, before: str | None = None) -> list[dict]:
+        paths = sorted((self.directory / "model_registry").glob("*.json"), reverse=True)
+        page = [path for path in paths if before is None or path.stem < before][:limit]
+        return [read_artifact(path)["metadata"] for path in page]
+
+    def model_metadata(self, version_id: str) -> dict:
+        return read_artifact(self.directory / "model_registry" / (version_id + ".json"))["metadata"]
+
     def publish(
-        self, kind: str, target: date, report: dict, run: dict | None = None, observation: dict | None = None
+        self, kind: str, target: date, report: dict, run: dict | None = None,
+        observation: dict | None = None, *, model: ModelVersion | None = None,
     ) -> None:
+        if model is not None:
+            self.save_model(model)
         write_json(self.directory / self.location(kind, target), report)
         if observation is not None and not self.observation_path(target).is_file():
             self.save_observation(target, observation)
@@ -190,6 +218,13 @@ class PostgresResults:
                     end_date date NOT NULL,
                     payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
                     PRIMARY KEY (rule_version, end_date)
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS model_versions (
+                    version_id text PRIMARY KEY,
+                    metadata jsonb NOT NULL CHECK (jsonb_typeof(metadata) = 'object'),
+                    artifact bytea NOT NULL CHECK (octet_length(artifact) > 0)
                 )
             """)
 
@@ -318,12 +353,52 @@ class PostgresResults:
                 ON CONFLICT (rule_version, end_date) DO NOTHING
             """, (report["rule_version"], report["end_date"], Jsonb(report)))
 
+    @staticmethod
+    def insert_model(connection, model: ModelVersion) -> None:
+        from psycopg.types.json import Jsonb
+
+        connection.execute("""
+            INSERT INTO model_versions (version_id, metadata, artifact) VALUES (%s, %s, %s)
+            ON CONFLICT (version_id) DO NOTHING
+        """, (model.metadata["version_id"], Jsonb(model.metadata), model.artifact))
+
+    def save_model(self, model: ModelVersion) -> None:
+        with self.connection() as connection:
+            self.insert_model(connection, model)
+
+    def model_version(self, version_id: str) -> ModelVersion:
+        with self.connection() as connection:
+            row = connection.execute("SELECT metadata, artifact FROM model_versions WHERE version_id = %s",
+                                     (version_id,)).fetchone()
+        if row is None:
+            raise FileNotFoundError(version_id)
+        return ModelVersion(*row)
+
+    def model_versions(self, limit: int, before: str | None = None) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute("""
+                SELECT metadata FROM model_versions
+                WHERE (%s::text IS NULL OR version_id < %s)
+                ORDER BY version_id DESC LIMIT %s
+            """, (before, before, limit)).fetchall()
+        return [row[0] for row in rows]
+
+    def model_metadata(self, version_id: str) -> dict:
+        with self.connection() as connection:
+            row = connection.execute("SELECT metadata FROM model_versions WHERE version_id = %s", (version_id,)).fetchone()
+        if row is None:
+            raise FileNotFoundError(version_id)
+        return row[0]
+
     def publish(
-        self, kind: str, target: date, report: dict, run: dict | None = None, observation: dict | None = None
+        self, kind: str, target: date, report: dict, run: dict | None = None,
+        observation: dict | None = None, *, model: ModelVersion | None = None,
     ) -> None:
         from psycopg.types.json import Jsonb
 
         with self.connection() as connection:
+            if model is not None:
+                self.insert_model(connection, model)
             connection.execute("""
                 INSERT INTO forecast_reports (kind, target_date, payload) VALUES (%s, %s, %s)
                 ON CONFLICT (kind, target_date) DO UPDATE SET payload = EXCLUDED.payload
@@ -353,6 +428,8 @@ class PostgresResults:
         source = FileResults(directory)
         reports = runs = 0
         with self.connection() as connection:
+            for path in sorted((directory / "model_registry").glob("*.json")):
+                self.insert_model(connection, source.model_version(path.stem))
             for target in source.dates():
                 for kind in REPORT_KINDS:
                     if not source.has(kind, target):

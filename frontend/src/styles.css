@@ -230,6 +230,14 @@ h1, h2, p, dl, dd { margin: 0; }
 .quality-summary dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
 .quality-summary dt { color: var(--muted); font-size: 12px; }
 .quality-summary dd { font-size: 13px; font-weight: 650; text-align: right; }
+.model-registry { grid-column: 1 / -1; min-width: 0; }
+.model-registry > .panel-copy { margin: 8px 0 12px; }
+.registry-entry { border-top: 1px solid var(--line); }
+.registry-entry > summary { padding: 12px 0; cursor: pointer; }
+.registry-entry > summary small { display: block; color: var(--muted); margin: 4px 0 6px; }
+.registry-entry .decision-status { display: inline-block; }
+.registry-detail { display: grid; gap: 12px; padding: 0 0 14px; }
+.registry-detail dd, .registry-detail code { overflow-wrap: anywhere; }
 .what-if-panel { grid-column: 1 / -1; }
 .what-if-panel .panel-heading { flex-wrap: wrap; }
 .scenario-feature { margin: 14px 0; max-width: 260px; }

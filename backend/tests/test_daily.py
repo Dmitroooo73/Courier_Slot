@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from backend.daily import daily_lock, latest_due, publish_daily, watch
 from backend.pipeline.orders import MOSCOW
+from backend.pipeline.results import ModelVersion
 
 
 @patch.dict("os.environ", {"PULT_DATABASE_URL": ""})
@@ -33,13 +34,16 @@ class DailyTests(unittest.TestCase):
         with (
             TemporaryDirectory(dir=Path.cwd()) as directory,
             redirect_stdout(io.StringIO()),
-            patch("backend.daily.build_report", return_value={"target_date": target.isoformat()}) as build,
+            patch("backend.daily.build_report", return_value=({"target_date": target.isoformat()}, (None, []))) as build,
+            patch("backend.daily.make_model_version", return_value=ModelVersion({"version_id": "test-version"}, b"test")),
             patch("backend.daily.observation_record", return_value=None),
         ):
             data = Path(directory)
             publish_daily(target, data)
             output = data / "evaluations" / f"{target}.json"
             first = output.read_bytes()
+            self.assertEqual(json.loads(first)["model_version_id"], "test-version")
+            self.assertEqual(len(list((data / "model_registry").glob("*.json"))), 1)
             publish_daily(target, data)
             self.assertEqual(build.call_count, 1)
 

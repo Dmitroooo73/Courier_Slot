@@ -10,6 +10,7 @@ from time import sleep
 from uuid import uuid4
 
 from .modeling.report import FIRST_MODEL_DATE, build_report
+from .modeling.registry import make_model_version
 from .pipeline.drift import persist_input_drift
 from .pipeline.forecast import forecast_cutoff
 from .pipeline.observations import collect_closed_days, observation_record
@@ -74,17 +75,21 @@ def publish_daily(target: date, data: Path, force: bool = False) -> None:
         }
         print(f"Готовим прогноз на {target}…", flush=True)
         try:
-            report = build_report(target, data, journal)
+            report, fitted = build_report(target, data, journal)
+            model = make_model_version(report, *fitted, published=True)
+            report["model_version_id"] = model.metadata["version_id"]
             published = datetime.now(timezone.utc)
             observation = observation_record(target, report, published)
             journal.update(
                 status="success",
                 step="done",
                 forecast_file=location,
+                model_version_id=report["model_version_id"],
                 finished_at_utc=published.isoformat(),
             )
-            store.publish(EVALUATIONS, target, report, journal, observation)
+            store.publish(EVALUATIONS, target, report, journal, observation, model=model)
         except (Exception, KeyboardInterrupt) as error:
+            journal.pop("model_version_id", None)
             if journal.pop("forecast_file", None) is not None:
                 journal["step"] = "publish"
             journal.update(

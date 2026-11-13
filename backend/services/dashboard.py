@@ -36,6 +36,8 @@ def read_forecast(directory: Path, target: date) -> tuple[dict, dict | None]:
             "weather": report["weather"],
             "forecasts": report["forecasts"],
         }
+        if "model_version_id" in report:
+            forecast["model_version_id"] = report["model_version_id"]
         metrics = {
             "validation": report["validation"],
             "selected": report["selected"],

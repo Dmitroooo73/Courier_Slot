@@ -20,6 +20,7 @@ def data_directory(request: Request) -> Path:
 
 DataDirectory = Annotated[Path, Depends(data_directory)]
 TargetDate = Annotated[date | None, Query(alias="date")]
+ModelCursor = Annotated[str | None, Query(pattern=r"^[0-9]{8}T[0-9]{12}Z-[0-9a-f]{12}$")]
 
 
 def get_result(directory: Path, target: date | None) -> tuple[dict, dict | None]:
@@ -41,6 +42,12 @@ def dashboard(directory: DataDirectory, target: TargetDate = None) -> dict:
     forecast, metrics = (None, None)
     if target is not None or dates:
         forecast, metrics = get_result(directory, target or dates[0])
+    forecast_model = None
+    if forecast and (version_id := forecast.get("model_version_id")):
+        try:
+            forecast_model = store.model_metadata(version_id)
+        except FileNotFoundError:
+            pass
     return {
         "dates": dates,
         "forecast": forecast,
@@ -49,7 +56,16 @@ def dashboard(directory: DataDirectory, target: TargetDate = None) -> dict:
         "observations": store.observations(),
         "monitoring_decisions": store.latest_decisions(RULE_VERSION),
         "input_drift": store.latest_drift(DRIFT_RULE_VERSION),
+        "forecast_model": forecast_model,
     }
+
+
+@router.get("/models")
+def model_registry(directory: DataDirectory, before: ModelCursor = None,
+                   limit: Annotated[int, Query(ge=1, le=30)] = 8) -> dict:
+    records = result_store(directory).model_versions(limit + 1, before)
+    return {"versions": records[:limit],
+            "next_before": records[limit - 1]["version_id"] if len(records) > limit else None}
 
 
 @router.get("/monitoring/decisions")

@@ -27,6 +27,7 @@ export interface Forecast {
   orders_source: string;
   model: string;
   uses_weather?: boolean;
+  model_version_id?: string | null;
   weather: Weather;
   forecasts: ZoneForecast[];
 }
@@ -40,6 +41,34 @@ interface Score {
   mae_orders: number;
   wape_percent: number | null;
   observations: number;
+}
+
+export interface ModelVersion extends ModelChoice {
+  version_id: string;
+  created_at_utc: string;
+  target_date: string;
+  status: "registered" | "published";
+  training: { start: string; end: string; rows: number };
+  dataset_sha256: string;
+  orders_source: string;
+  features: string[];
+  feature_schema_version: string;
+  parameters: Record<string, unknown>;
+  seed: number;
+  versions: Record<string, string>;
+  validation: Score;
+  holdout: { start: string; end: string; train_through: string; selected: Score; baseline: Score };
+  artifact: { format: string; sha256: string; bytes: number };
+}
+
+export async function getModelVersions(before: string | null, signal: AbortSignal): Promise<{
+  versions: ModelVersion[]; next_before: string | null;
+}> {
+  const params = new URLSearchParams();
+  if (before) params.set("before", before);
+  const response = await fetch("/api/models?" + params, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error("Не удалось загрузить реестр моделей.");
+  return response.json();
 }
 
 export interface ForecastPoint {
@@ -173,6 +202,7 @@ export interface DashboardData {
   observations?: Observation[];
   monitoring_decisions?: MonitoringDecision[];
   input_drift?: InputDrift | null;
+  forecast_model?: ModelVersion | null;
 }
 
 export async function getDashboard(date: string, signal: AbortSignal): Promise<DashboardData> {

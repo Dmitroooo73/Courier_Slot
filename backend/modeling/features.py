@@ -4,6 +4,7 @@ from statistics import fmean
 from backend.pipeline.orders import ZONES
 
 
+FEATURE_SCHEMA_VERSION = "delivery-daily-v1"
 CATEGORIES = ("zone_id", "weekday")
 LAGS = (2, 7, 14)
 CLOSED_WEEK_LAGS = range(2, 9)
