@@ -10,7 +10,7 @@ from backend.modeling.lifecycle import (
     CONTROL_DAYS, HALF_LIFE_DAYS, MIN_IMPROVEMENT, RULES, LifecycleConflict, clean_window_issue,
     request_candidate, rollback,
 )
-from backend.pipeline.orders import MOSCOW
+from backend.pipeline.orders import MOSCOW, SOURCE
 from backend.pipeline.results import FileResults, PostgresResults, result_store
 
 from .auth import NO_STORE, CurrentAccount, require_admin, same_origin
@@ -43,7 +43,9 @@ def lifecycle(store: FileResults | PostgresResults, active: dict | None) -> dict
     current = activations[0] if activations else None
     rollback_to = None
     if active and current and current["version_id"] == active["version_id"]:
-        rollback_to = metadata_or_none(store, current["previous_version_id"])
+        previous = metadata_or_none(store, current["previous_version_id"])
+        # A version trained on another data version cannot come back.
+        rollback_to = previous if previous and previous.get("orders_source") == SOURCE else None
     active_metadata = metadata_or_none(store, active and active["version_id"])
     control_end = last_closed_day(datetime.now(timezone.utc))
     training_end = (active_metadata or {}).get("training", {}).get("end")
@@ -76,6 +78,12 @@ def model_registry(request: Request, before: ModelCursor = None,
     if before is None:
         page["lifecycle"] = lifecycle(store, active)
     return page
+
+
+@router.get("/experiments")
+def experiments(request: Request, limit: Annotated[int, Query(ge=1, le=20)] = 5) -> dict:
+    """Hyperparameter search journal: configuration, data version, seed, metrics and the holdout check."""
+    return {"experiments": result_store(request.app.state.data_directory).experiments(limit)}
 
 
 @router.get("/lifecycle-demo")

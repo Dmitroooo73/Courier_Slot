@@ -110,6 +110,7 @@ class HttpIntegrationTests(unittest.TestCase):
             db.execute("DELETE FROM active_forecast_model")
             db.execute("DELETE FROM model_activations")
             db.execute("DELETE FROM model_candidates")
+            db.execute("DELETE FROM experiments")
             db.execute("DELETE FROM model_versions")
 
     def activation(self, version_id, previous=None, action="initialize", hour=0):
@@ -205,8 +206,11 @@ class HttpIntegrationTests(unittest.TestCase):
         first_id = "20261101T120000000000Z-000000000001"
         second_id = "20261108T120000000000Z-000000000002"
         yesterday = datetime.now(MOSCOW).date() - timedelta(days=1)
-        first = ModelVersion({"version_id": first_id, "training": {"end": "2026-01-01"}}, b"first")
-        second = ModelVersion({"version_id": second_id, "training": {"end": yesterday.isoformat()}}, b"second")
+        from backend.pipeline.orders import LEGACY_SOURCE, SOURCE
+
+        first = ModelVersion({"version_id": first_id, "training": {"end": "2026-01-01"}, "orders_source": SOURCE}, b"first")
+        second = ModelVersion({"version_id": second_id, "training": {"end": yesterday.isoformat()}, "orders_source": SOURCE},
+                              b"second")
         for model in (first, second):
             self.database.save_model(model)
         self.assertTrue(self.database.activate_model(self.activation(first_id), expected=None))
@@ -249,6 +253,15 @@ class HttpIntegrationTests(unittest.TestCase):
         self.assertEqual([item["action"] for item in page["lifecycle"]["activations"]], ["rollback", "activate", "initialize"])
         self.assertNotIn("context", page["lifecycle"]["activations"][0])
         self.assertEqual(self.database.active_model()["reference"], {})
+
+        # A version trained on an older data version is never offered or restored.
+        with self.database.connection() as db:
+            db.execute("UPDATE model_versions SET metadata = jsonb_set(metadata, '{orders_source}', to_jsonb(%s::text)) "
+                       "WHERE version_id = %s", (LEGACY_SOURCE, second_id))
+        self.assertIsNone(anonymous.call("/api/models")[1]["lifecycle"]["rollback_to"])
+        status, body, _ = admin.call("/api/admin/models/rollback", "POST", {"expected_version_id": first_id})
+        self.assertEqual(status, 409)
+        self.assertIn("другой версии данных", body["detail"])
 
     def test_dashboard_reads_saved_drift_and_repeat_preserves_the_report(self):
         from backend.pipeline.drift import RULE_VERSION, persist_input_drift
@@ -395,6 +408,10 @@ class HttpIntegrationTests(unittest.TestCase):
         self.assertEqual(client.call("/api/dashboard?date=2026-11-11")[0], 404)
         self.assertEqual(client.call("/api/runs?limit=-1")[0], 422)
         self.assertEqual(len(client.call("/api/zones")[1]), 6)
+        self.assertEqual(client.call("/api/experiments")[1], {"experiments": []})
+        self.assertEqual(client.call("/api/experiments?limit=0")[0], 422)
+        self.database.save_experiment({"experiment_id": "exp-20261113T120000-abcdef", "trials": []})
+        self.assertEqual(client.call("/api/experiments")[1]["experiments"][0]["experiment_id"], "exp-20261113T120000-abcdef")
 
     @unittest.skipUnless(os.getenv("PULT_MINIO_ENDPOINT"), "MinIO endpoint not configured")
     def test_avatar_storage_permissions_and_deletion(self):

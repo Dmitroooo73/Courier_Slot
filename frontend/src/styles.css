@@ -277,6 +277,13 @@ h1, h2, p, dl, dd { margin: 0; }
 .demo-steps ol > li p { margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 760px; }
 .demo-checks { margin-top: 14px; }
 .demo-steps code { overflow-wrap: anywhere; }
+.experiments-panel { grid-column: 1 / -1; min-width: 0; }
+.experiments-panel h2 { margin-top: 5px; }
+.experiments-result { margin: 10px 0 14px; max-width: 900px; }
+.experiments-facts { margin-bottom: 12px; }
+.experiments-panel td:nth-child(2) { white-space: normal; min-width: 260px; }
+.experiments-panel .model-tag { margin-left: 6px; }
+.experiments-panel code { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 .quality-promotion { margin-top: 10px; color: var(--ink); font-size: 13px; line-height: 1.5; }
 .what-if-panel { grid-column: 1 / -1; }
 .what-if-panel .panel-heading { flex-wrap: wrap; }

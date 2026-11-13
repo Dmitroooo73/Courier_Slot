@@ -51,7 +51,8 @@ def recency_weights(dates: pd.Series, half_life: float) -> np.ndarray:
 
 
 def fit_model(model: str, uses_weather: bool, train: pd.DataFrame, *, excluded: tuple[str, ...] = (),
-              half_life: float | None = None):
+              half_life: float | None = None, params: dict | None = None):
+    """`params` replaces Ridge's settings or overrides CatBoost's defaults (seed and threads stay fixed)."""
     numeric = [feature for feature in ORDER_FEATURES if feature not in excluded]
     if uses_weather:
         numeric.extend(feature for feature in WEATHER_FEATURES if feature not in excluded)
@@ -71,10 +72,10 @@ def fit_model(model: str, uses_weather: bool, train: pd.DataFrame, *, excluded: 
                 ),
             ]
         )
-        estimator = make_pipeline(preprocessing, Ridge(**RIDGE_PARAMETERS))
+        estimator = make_pipeline(preprocessing, Ridge(**(params or RIDGE_PARAMETERS)))
         weight_argument = "ridge__sample_weight"
     else:
-        estimator = CatBoostRegressor(cat_features=categories, **CATBOOST_PARAMETERS)
+        estimator = CatBoostRegressor(cat_features=categories, **{**CATBOOST_PARAMETERS, **(params or {})})
         weight_argument = "sample_weight"
     weights = {} if half_life is None else {weight_argument: recency_weights(train["date"], half_life)}
     estimator.fit(train[columns], train["actual_orders"], **weights)

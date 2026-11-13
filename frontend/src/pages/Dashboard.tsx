@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getDashboard } from "../api/dashboard";
+import { ExperimentJournal } from "../components/ExperimentJournal";
 import { FeatureImportance } from "../components/FeatureImportance";
 import type { DashboardData, Forecast, ZoneForecast } from "../api/dashboard";
 import { ForecastExplanation } from "../components/ForecastExplanation";
@@ -15,7 +16,7 @@ import { ZoneMap } from "../components/ZoneMap";
 import { ZonePicker } from "../components/ZonePicker";
 import { WhatIf } from "../components/WhatIf";
 import { RunHistory } from "../components/RunHistory";
-import { formatDate, formatDateTime, formatTime, modelName, number } from "../format";
+import { formatDate, formatDateTime, formatTime, modelName, number, ordersSourceLabel } from "../format";
 import { useAuth } from "../useAuth";
 import { AccountPanel } from "./Account";
 import { AdminPanel } from "./Admin";
@@ -227,7 +228,7 @@ export function Dashboard() {
         </section>
 
         {!accountView && view.id !== "courier" && <div className="status-bar">
-          <span><i />Синтетические заказы</span>
+          <span><i />{forecast ? ordersSourceLabel(forecast.orders_source).replace(/^с/, "С") : "Синтетические заказы"}</span>
           <NowWeather />
           <span aria-live="polite">
             {updatedAt ? "Данные получены в " + formatTime(updatedAt) + " мск" : "Подключение к локальному API"}
@@ -341,6 +342,7 @@ export function Dashboard() {
             ) : <p className="empty-panel">Запусти <code>python -X utf8 -m backend.modeling</code> из окружения проекта.</p>}
           </section>
           <FeatureImportance key={forecast?.target_date} windows={metrics?.feature_importance ?? []} />
+          <ExperimentJournal />
           <WhatIf key={selectionKey} curves={metrics?.scenarios?.[selected?.zone_id ?? ""] ?? []} zonePicker={zonePicker} />
         </div>}
 

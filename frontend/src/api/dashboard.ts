@@ -87,7 +87,7 @@ export interface CandidateJob {
 
 export interface Activation {
   activation_id: string;
-  action: "initialize" | "activate" | "rollback";
+  action: "initialize" | "activate" | "rollback" | "data_version";
   version_id: string;
   previous_version_id: string | null;
   candidate_id: string | null;
@@ -127,6 +127,37 @@ export interface DemoEvent {
   status?: MonitoringDecision["status"];
   previous?: MonitoringDecision["status"];
   job?: Pick<CandidateJob, "trigger" | "status" | "decision" | "control" | "version_id">;
+}
+
+export interface ExperimentTrial {
+  trial: number;
+  model: string;
+  uses_weather: boolean;
+  params: Record<string, number>;
+  origin: "default" | "random";
+  mae_orders: number;
+  wape_percent: number | null;
+  seconds: number;
+}
+
+export interface Experiment {
+  experiment_id: string;
+  created_at_utc: string;
+  target_date: string;
+  seed: number;
+  budget: { max_trials: number; max_seconds: number };
+  spent_seconds: number;
+  data: { orders_source: string; dataset_sha256: string; rows: number; start: string; end: string };
+  trials: ExperimentTrial[];
+  best_trial: number;
+  default_trial: number;
+  holdout: { start: string; end: string; train_through: string; best: Score; default: Score; baseline: Score };
+}
+
+export async function getExperiments(signal: AbortSignal): Promise<Experiment[]> {
+  const response = await fetch("/api/experiments", { signal, cache: "no-store" });
+  if (!response.ok) throw new Error("Не удалось загрузить журнал экспериментов.");
+  return (await response.json()).experiments;
 }
 
 export async function getLifecycleDemo(signal: AbortSignal): Promise<LifecycleDemoSummary | null> {

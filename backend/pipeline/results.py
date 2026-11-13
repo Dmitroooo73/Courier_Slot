@@ -211,6 +211,19 @@ class FileResults:
             self.save_model(model)
         write_json(self.directory / "model_candidates" / (job["candidate_id"] + ".json"), job)
 
+    def save_experiment(self, experiment: dict) -> None:
+        path = self.directory / "experiments" / (experiment["experiment_id"] + ".json")
+        if path.exists():
+            raise ValueError("Эксперимент с таким идентификатором уже записан.")
+        write_json(path, experiment)
+
+    def experiments(self, limit: int = 10) -> list[dict]:
+        paths = sorted((self.directory / "experiments").glob("exp-*.json"), reverse=True)
+        return [read_artifact(path) for path in paths[:limit]]
+
+    def experiment(self, experiment_id: str) -> dict:
+        return read_artifact(self.directory / "experiments" / (experiment_id + ".json"))
+
     def lifecycle_demo(self, demo_version: str) -> dict | None:
         try:
             return read_artifact(self.directory / "lifecycle_demo" / (demo_version + ".json"))
@@ -320,6 +333,12 @@ class PostgresResults:
                     candidate_id text PRIMARY KEY,
                     trigger_key text NOT NULL UNIQUE,
                     status text NOT NULL CHECK (status IN ({", ".join(f"'{status}'" for status in CANDIDATE_STATUSES)})),
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS experiments (
+                    experiment_id text PRIMARY KEY,
                     payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
                 )
             """)
@@ -608,6 +627,32 @@ class PostgresResults:
             if model is not None:
                 self.insert_model(connection, model)
             self.write_candidate(connection, job)
+
+    def save_experiment(self, experiment: dict) -> None:
+        """Journal entries are immutable: an existing id is never overwritten."""
+        from psycopg.types.json import Jsonb
+
+        with self.connection() as connection:
+            inserted = connection.execute("""
+                INSERT INTO experiments (experiment_id, payload) VALUES (%s, %s) ON CONFLICT DO NOTHING
+            """, (experiment["experiment_id"], Jsonb(experiment))).rowcount
+        if not inserted:
+            raise ValueError("Эксперимент с таким идентификатором уже записан.")
+
+    def experiments(self, limit: int = 10) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM experiments ORDER BY experiment_id DESC LIMIT %s", (limit,)
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def experiment(self, experiment_id: str) -> dict:
+        with self.connection() as connection:
+            row = connection.execute("SELECT payload FROM experiments WHERE experiment_id = %s",
+                                     (experiment_id,)).fetchone()
+        if row is None:
+            raise FileNotFoundError(experiment_id)
+        return row[0]
 
     def lifecycle_demo(self, demo_version: str) -> dict | None:
         with self.connection() as connection:
