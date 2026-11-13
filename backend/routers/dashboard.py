@@ -9,6 +9,7 @@ from backend.pipeline.monitoring import RULE_VERSION
 from backend.pipeline.orders import ZONES
 from backend.pipeline.results import result_store
 from backend.services.dashboard import available_dates, read_forecast, recent_runs
+from backend.services.weather_now import WeatherUnavailable, current_weather
 
 
 router = APIRouter(prefix="/api", tags=["Пульт доставки"])
@@ -20,7 +21,6 @@ def data_directory(request: Request) -> Path:
 
 DataDirectory = Annotated[Path, Depends(data_directory)]
 TargetDate = Annotated[date | None, Query(alias="date")]
-ModelCursor = Annotated[str | None, Query(pattern=r"^[0-9]{8}T[0-9]{12}Z-[0-9a-f]{12}$")]
 
 
 def get_result(directory: Path, target: date | None) -> tuple[dict, dict | None]:
@@ -60,14 +60,6 @@ def dashboard(directory: DataDirectory, target: TargetDate = None) -> dict:
     }
 
 
-@router.get("/models")
-def model_registry(directory: DataDirectory, before: ModelCursor = None,
-                   limit: Annotated[int, Query(ge=1, le=30)] = 8) -> dict:
-    records = result_store(directory).model_versions(limit + 1, before)
-    return {"versions": records[:limit],
-            "next_before": records[limit - 1]["version_id"] if len(records) > limit else None}
-
-
 @router.get("/monitoring/decisions")
 def monitoring_decisions(directory: DataDirectory, zone: str,
                          before: date | None = None,
@@ -102,3 +94,12 @@ def metrics(directory: DataDirectory, target: TargetDate = None) -> dict | None:
 @router.get("/runs")
 def runs(directory: DataDirectory, limit: Annotated[int, Query(ge=1, le=20)] = 5) -> list[dict]:
     return recent_runs(directory, limit)
+
+
+@router.get("/weather/now")
+def weather_now() -> dict:
+    """Current weather in Moscow for the dispatcher. The model uses archived forecast runs instead."""
+    try:
+        return current_weather()
+    except WeatherUnavailable as error:
+        raise HTTPException(503, str(error)) from error
