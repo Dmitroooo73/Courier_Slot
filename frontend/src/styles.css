@@ -478,6 +478,22 @@ tbody th { font-weight: 640; }
 .decision-status { padding: 5px 9px; background: var(--mint); border-radius: 6px; font-size: 11px; font-weight: 650; }
 .decision-pending { background: var(--surface); color: var(--muted); }
 .decision-warning, .decision-alert { background: var(--risk-bg); color: var(--risk); }
+.drift-panel .panel-heading { align-items: center; }
+.drift-panel .monitor-message h3 { margin: 0; }
+.drift-periods, .drift-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.drift-periods { margin: 0 0 14px; }
+.drift-periods > div { padding: 10px; border-radius: 8px; background: var(--surface); }
+.drift-periods dt, .drift-values dt { color: var(--muted); font-size: 12px; }
+.drift-periods dd, .drift-values dd { margin: 4px 0 0; font-weight: 650; }
+.drift-group { margin-top: 18px; }
+.drift-group h3 { margin: 0 0 8px; }
+.drift-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 8px; }
+.drift-feature { padding: 12px; gap: 8px; }
+.drift-feature-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
+.drift-feature-heading strong { font-size: 13px; }
+.drift-feature-heading .decision-warning { color: var(--risk); }
+.drift-values { margin: 0; }
+.drift-panel .monitor-help ul { margin-top: 8px; padding-left: 20px; }
 @media (max-width: 600px) {
   .decision-entry > summary { grid-template-columns: 60px minmax(0, 1fr) 14px; gap: 6px; }
   .decision-entry .decision-status { grid-column: 2; justify-self: start; }

@@ -60,6 +60,7 @@ class DailyTests(unittest.TestCase):
             patch("backend.daily.datetime") as clock,
             patch("backend.daily.publish_daily", side_effect=OSError("timeout")) as run,
             patch("backend.daily.settle_observations"),
+            patch("backend.daily.check_input_drift"),
             patch("backend.daily.wait_until", side_effect=KeyboardInterrupt) as wait,
             redirect_stdout(io.StringIO()),
             redirect_stderr(io.StringIO()),

@@ -4,6 +4,7 @@ import { FeatureImportance } from "../components/FeatureImportance";
 import type { DashboardData, Forecast, ZoneForecast } from "../api/dashboard";
 import { ForecastExplanation } from "../components/ForecastExplanation";
 import { HistoryChart } from "../components/HistoryChart";
+import { InputDrift } from "../components/InputDrift";
 import { LiveMonitoring } from "../components/LiveMonitoring";
 import { ModelTable } from "../components/ModelTable";
 import { Monitoring } from "../components/Monitoring";
@@ -90,7 +91,7 @@ function ZoneDetails({ zone, forecast }: { zone: ZoneForecast; forecast: Forecas
 export function Dashboard() {
   const auth = useAuth();
   const [view, setView] = useState(currentView);
-  const [monitorMode, setMonitorMode] = useState<"live" | "demo">("live");
+  const [monitorMode, setMonitorMode] = useState<"live" | "drift" | "demo">("live");
   const [data, setData] = useState<DashboardData | null>(null);
   const [zoneId, setZoneId] = useState("east");
   const [date, setDate] = useState("");
@@ -202,7 +203,7 @@ export function Dashboard() {
               view.id === "courier" ? "Понятный выбор перед переездом" :
               view.id === "admin" ? "Пользователи и роли" :
               view.id === "runs" ? "История обновления данных и публикации прогнозов" :
-              view.id === "monitoring" ? monitorMode === "live" ? "Сверка прогнозов с заказами после закрытия суток" : "Учебная проверка на 14 прошлых днях" :
+              view.id === "monitoring" ? "Проверки прогноза и входных данных" :
               forecast ? "Прогноз на " + formatDate(forecast.target_date) : "Суточный прогноз заказов готовой еды"}</p>
           </div>
           {!accountView && view.id !== "courier" && <div className="hero-actions">
@@ -336,13 +337,17 @@ export function Dashboard() {
           <>
             <div className="monitor-modes" aria-label="Режим мониторинга">
               <button className="refresh-button" aria-pressed={monitorMode === "live"} onClick={() => setMonitorMode("live")}>По заказам</button>
+              <button className="refresh-button" aria-pressed={monitorMode === "drift"} onClick={() => setMonitorMode("drift")}>Изменение данных</button>
               <button className="refresh-button" aria-pressed={monitorMode === "demo"} onClick={() => setMonitorMode("demo")}>Учебный сценарий</button>
             </div>
             <p className="monitor-mode-description">{monitorMode === "live"
               ? "Сравниваем заранее сохранённые прогнозы с заказами после завершения каждого дня."
-              : "Проигрываем 14 прошлых дней, чтобы показать, как система замечает рост ошибки."}</p>
+              : monitorMode === "drift" ? "Сравниваем данные, которые получает модель, с опорным периодом."
+                : "Проигрываем 14 прошлых дней, чтобы показать, как система замечает рост ошибки."}</p>
             {monitorMode === "live" ? (
               <LiveMonitoring observations={data?.observations ?? []} decisions={data?.monitoring_decisions ?? []} zoneId={selected?.zone_id ?? zoneId} zonePicker={zonePicker} />
+            ) : monitorMode === "drift" ? (
+              <InputDrift report={data?.input_drift} zoneId={selected?.zone_id ?? zoneId} zonePicker={zonePicker} loading={loading} />
             ) : <Monitoring key={selectionKey} points={history} zonePicker={zonePicker} validationMae={validationMae} />}
           </>
         )}

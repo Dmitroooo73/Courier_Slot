@@ -101,6 +101,26 @@ class FileResults:
         return [record for zone in sorted(root.glob("*")) if zone.is_dir()
                 for record in self.decisions(rule_version, zone.name, limit=1)]
 
+    def drift_reference(self, rule_version: str) -> dict | None:
+        try:
+            return read_artifact(self.directory / "drift" / rule_version / "reference.json")
+        except FileNotFoundError:
+            return None
+
+    def latest_drift(self, rule_version: str) -> dict | None:
+        root = self.directory / "drift" / rule_version
+        path = max(root.glob("????-??-??.json"), default=None)
+        return read_artifact(path) if path is not None else None
+
+    def save_drift(self, report: dict, reference: dict | None) -> None:
+        root = self.directory / "drift" / report["rule_version"]
+        reference_path = root / "reference.json"
+        if reference is not None and not reference_path.exists():
+            write_json(reference_path, reference)
+        report_path = root / (report["end_date"] + ".json")
+        if not report_path.exists():
+            write_json(report_path, report)
+
     def publish(
         self, kind: str, target: date, report: dict, run: dict | None = None, observation: dict | None = None
     ) -> None:
@@ -156,6 +176,20 @@ class PostgresResults:
                     end_date date NOT NULL,
                     payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
                     PRIMARY KEY (rule_version, zone_id, end_date)
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS drift_references (
+                    rule_version text PRIMARY KEY,
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS drift_reports (
+                    rule_version text NOT NULL,
+                    end_date date NOT NULL,
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+                    PRIMARY KEY (rule_version, end_date)
                 )
             """)
 
@@ -256,6 +290,33 @@ class PostgresResults:
                 WHERE rule_version = %s ORDER BY zone_id, end_date DESC
             """, (rule_version,)).fetchall()
         return [row[0] for row in rows]
+
+    def drift_reference(self, rule_version: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute("SELECT payload FROM drift_references WHERE rule_version = %s",
+                                     (rule_version,)).fetchone()
+        return row[0] if row else None
+
+    def latest_drift(self, rule_version: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute("""
+                SELECT payload FROM drift_reports WHERE rule_version = %s ORDER BY end_date DESC LIMIT 1
+            """, (rule_version,)).fetchone()
+        return row[0] if row else None
+
+    def save_drift(self, report: dict, reference: dict | None) -> None:
+        from psycopg.types.json import Jsonb
+
+        with self.connection() as connection:
+            if reference is not None:
+                connection.execute("""
+                    INSERT INTO drift_references (rule_version, payload) VALUES (%s, %s)
+                    ON CONFLICT (rule_version) DO NOTHING
+                """, (report["rule_version"], Jsonb(reference)))
+            connection.execute("""
+                INSERT INTO drift_reports (rule_version, end_date, payload) VALUES (%s, %s, %s)
+                ON CONFLICT (rule_version, end_date) DO NOTHING
+            """, (report["rule_version"], report["end_date"], Jsonb(report)))
 
     def publish(
         self, kind: str, target: date, report: dict, run: dict | None = None, observation: dict | None = None

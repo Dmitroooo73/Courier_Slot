@@ -10,6 +10,7 @@ from time import sleep
 from uuid import uuid4
 
 from .modeling.report import FIRST_MODEL_DATE, build_report
+from .pipeline.drift import persist_input_drift
 from .pipeline.forecast import forecast_cutoff
 from .pipeline.observations import collect_closed_days, observation_record
 from .pipeline.monitoring import persist_decisions
@@ -119,10 +120,19 @@ def settle_observations(data: Path, now: datetime) -> None:
         print(f"Сохранили решения мониторинга по зонам — {decisions}.", flush=True)
 
 
+def check_input_drift(data: Path, now: datetime) -> None:
+    store = result_store(data)
+    with result_lock(store, data):
+        report = persist_input_drift(store, data, now)
+    if report:
+        print(f"Сохранили проверку входных данных по {report['end_date']} включительно.", flush=True)
+
+
 def watch(data: Path) -> None:
     print("Расписание включено. Прогноз на завтра запускается ежедневно в 20:00 мск.", flush=True)
     published_target = None
     settled_on = None
+    drift_checked_on = None
     while True:
         now = datetime.now(MOSCOW)
         target = latest_due(now)
@@ -144,6 +154,14 @@ def watch(data: Path) -> None:
                 print(f"Сверка фактов прервана. {error}", file=sys.stderr, flush=True)
             else:
                 settled_on = now.date()
+        if drift_checked_on != now.date():
+            try:
+                check_input_drift(data, now)
+            except Exception as error:
+                deadline = min(deadline, datetime.now(MOSCOW) + RETRY_DELAY)
+                print(f"Проверка входных данных прервана. {error}", file=sys.stderr, flush=True)
+            else:
+                drift_checked_on = now.date()
         print(f"Следующая проверка в {deadline:%d.%m.%Y %H:%M:%S} мск.", flush=True)
         wait_until(deadline)
 

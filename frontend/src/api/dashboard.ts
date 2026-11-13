@@ -116,6 +116,35 @@ export interface DecisionPage {
   next_before: string | null;
 }
 
+export interface DriftSeries {
+  feature: string;
+  status: "insufficient" | "steady" | "shift";
+  distance: number | null;
+  reference_count: number;
+  current_count: number;
+  reference_median: number | null;
+  current_median: number | null;
+}
+
+interface DriftWindow {
+  start_date: string;
+  end_date: string;
+  days: number;
+  sha256: string;
+}
+
+export interface InputDrift {
+  rule_version: string;
+  end_date: string;
+  saved_at_utc: string;
+  reference: DriftWindow;
+  reference_fixed: boolean;
+  current: DriftWindow;
+  rule: { distance_threshold: number; reference_min: number; current_min: number };
+  orders: Record<string, DriftSeries[]>;
+  weather: DriftSeries[];
+}
+
 export async function getMonitoringDecisions(zone: string, before: string | null, signal: AbortSignal): Promise<DecisionPage> {
   const query = new URLSearchParams({ zone });
   if (before) query.set("before", before);
@@ -143,6 +172,7 @@ export interface DashboardData {
   runs: Run[];
   observations?: Observation[];
   monitoring_decisions?: MonitoringDecision[];
+  input_drift?: InputDrift | null;
 }
 
 export async function getDashboard(date: string, signal: AbortSignal): Promise<DashboardData> {

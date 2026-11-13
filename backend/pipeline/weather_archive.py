@@ -20,7 +20,7 @@ def utc_hours(day: date) -> range:
 
 
 def weather_history(
-    first: date, last: date, directory: Path
+    first: date, last: date, directory: Path, *, fetch_missing: bool = True
 ) -> tuple[dict[date, dict[str, float | None]], int]:
     # The Moscow day starts at 21:00 UTC on the preceding date.
     first_utc = first - DAY
@@ -31,7 +31,8 @@ def weather_history(
             rows.update(hourly_rows(path.read_text(encoding="utf-8"), SUFFIX))
 
     ranges: list[tuple[date, date]] = []
-    for offset in range((last - first_utc).days + 1):
+    days_to_check = (last - first_utc).days + 1 if fetch_missing else 0
+    for offset in range(days_to_check):
         day = first_utc + offset * DAY
         if all(hour in rows for hour in utc_hours(day)):
             continue

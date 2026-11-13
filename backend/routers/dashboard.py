@@ -4,8 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from backend.pipeline.orders import ZONES
+from backend.pipeline.drift import RULE_VERSION as DRIFT_RULE_VERSION
 from backend.pipeline.monitoring import RULE_VERSION
+from backend.pipeline.orders import ZONES
 from backend.pipeline.results import result_store
 from backend.services.dashboard import available_dates, read_forecast, recent_runs
 
@@ -35,7 +36,8 @@ def get_result(directory: Path, target: date | None) -> tuple[dict, dict | None]
 
 @router.get("/dashboard")
 def dashboard(directory: DataDirectory, target: TargetDate = None) -> dict:
-    dates = available_dates(directory)
+    store = result_store(directory)
+    dates = store.dates()
     forecast, metrics = (None, None)
     if target is not None or dates:
         forecast, metrics = get_result(directory, target or dates[0])
@@ -44,8 +46,9 @@ def dashboard(directory: DataDirectory, target: TargetDate = None) -> dict:
         "forecast": forecast,
         "metrics": metrics,
         "runs": recent_runs(directory),
-        "observations": result_store(directory).observations(),
-        "monitoring_decisions": result_store(directory).latest_decisions(RULE_VERSION),
+        "observations": store.observations(),
+        "monitoring_decisions": store.latest_decisions(RULE_VERSION),
+        "input_drift": store.latest_drift(DRIFT_RULE_VERSION),
     }
 
 

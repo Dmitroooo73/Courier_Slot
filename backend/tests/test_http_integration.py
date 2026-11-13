@@ -105,6 +105,23 @@ class HttpIntegrationTests(unittest.TestCase):
             db.execute("DELETE FROM auth_attempts")
             db.execute("DELETE FROM monitoring_decisions")
             db.execute("DELETE FROM forecast_observations")
+            db.execute("DELETE FROM drift_reports")
+            db.execute("DELETE FROM drift_references")
+
+    def test_dashboard_reads_saved_drift_and_repeat_preserves_the_report(self):
+        from backend.pipeline.drift import RULE_VERSION, persist_input_drift
+        from backend.tests.test_drift import NOW, sample_days
+
+        data = Path(self.temporary.name)
+        with patch("backend.pipeline.drift.load_days", side_effect=sample_days):
+            report = persist_input_drift(self.database, data, NOW)
+            self.assertIsNone(persist_input_drift(self.database, data, NOW))
+        client = Client(self.base)
+        status, dashboard, _ = client.call("/api/dashboard")
+        self.assertEqual(status, 200)
+        self.assertEqual(dashboard["input_drift"], report)
+        self.assertEqual(self.database.drift_reference(RULE_VERSION)["window"], report["reference"])
+        self.assertEqual(self.database.latest_drift(RULE_VERSION), report)
 
     def test_monitoring_decisions_survive_connections_and_api_reads_do_not_write(self):
         from backend.pipeline.monitoring import RULE_VERSION, decision_records
