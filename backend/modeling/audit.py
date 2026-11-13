@@ -41,6 +41,8 @@ def main() -> None:
     args = parser.parse_args()
     store = result_store(args.data_dir)
     report = store.read(EVALUATIONS, args.date)
+    if report.get("forecast_mode") == "saved_model":
+        parser.error("Для аудита обучающей выборки выберите исходный отчёт обучения.")
     journal = {}
     frame, _, _ = report_inputs(args.date, args.data_dir, journal)
     if (dataset_digest(frame) != report["dataset_sha256"] or model_versions() != report["versions"]

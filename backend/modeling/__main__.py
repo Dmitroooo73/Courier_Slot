@@ -6,23 +6,19 @@ from pathlib import Path
 
 from backend.daily import latest_due, result_lock
 from backend.pipeline.orders import MOSCOW, ZONES
-from backend.pipeline.results import EVALUATIONS, result_store
+from backend.pipeline.results import result_store
 from backend.pipeline.weather import DEMO_DATE
 
 from .report import FIRST_MODEL_DATE, build_report
 from .registry import make_model_version
 
 
-def run(target: date, data: Path, zone_id: str | None, *, register_only: bool = False) -> None:
+def run(target: date, data: Path, zone_id: str | None) -> None:
     store = result_store(data)
     with result_lock(store, data):
         report, fitted = build_report(target, data, {})
-        model = make_model_version(report, *fitted, published=not register_only)
-        if register_only:
-            store.save_model(model)
-        else:
-            report["model_version_id"] = model.metadata["version_id"]
-            store.publish(EVALUATIONS, target, report, model=model)
+        model = make_model_version(report, *fitted, status="registered")
+        store.save_model(model)
 
     print(f"Версия в реестре: {model.metadata['version_id']}")
 
@@ -38,15 +34,13 @@ def run(target: date, data: Path, zone_id: str | None, *, register_only: bool = 
         f"На отложенных датах MAE {holdout['selected']['mae_orders']:.2f}, "
         f"у базы {holdout['baseline']['mae_orders']:.2f}."
     )
-    print(f"\nРасчёт на {target}" if register_only else f"\nПрогноз на {target}")
+    print(f"\nРасчёт на {target} для проверки")
     for row in report["forecasts"]:
         if zone_id is None or row["zone_id"] == zone_id:
             print(
                 f"{row['zone_name']:<14} прогноз {row['forecast_orders']}, "
                 f"мощность {row['capacity_orders']}"
             )
-    if not register_only:
-        print(f"\nОтчёт: {store.location(EVALUATIONS, target)}")
 
 
 def main() -> int:
@@ -54,13 +48,13 @@ def main() -> int:
     parser.add_argument("--date", type=date.fromisoformat, default=DEMO_DATE, help="дата прогноза")
     parser.add_argument("--data-dir", type=Path, default=Path("data"), help="каталог данных")
     parser.add_argument("--zone", choices=[zone.id for zone in ZONES], help="показать прогноз по выбранной зоне")
-    parser.add_argument("--register-only", action="store_true", help="сохранить версию модели без публикации прогноза")
+    parser.add_argument("--register-only", action="store_true", help="сохранить модель в реестре (режим по умолчанию)")
     args = parser.parse_args()
     due = latest_due(datetime.now(MOSCOW))
     if not FIRST_MODEL_DATE <= args.date <= due:
         parser.error(f"дата прогноза должна быть в диапазоне {FIRST_MODEL_DATE} — {due}")
     try:
-        run(args.date, args.data_dir, args.zone, register_only=args.register_only)
+        run(args.date, args.data_dir, args.zone)
     except ModuleNotFoundError as error:
         print(f"Установите зависимости из requirements-ml.txt. {error}", file=sys.stderr)
         return 1

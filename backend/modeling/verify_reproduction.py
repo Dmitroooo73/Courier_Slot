@@ -15,6 +15,8 @@ def main() -> None:
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     args = parser.parse_args()
     saved = result_store(args.data_dir).read(EVALUATIONS, args.date)
+    if saved.get("forecast_mode") == "saved_model":
+        parser.error("Для воспроизведения полного обучения выберите архивный отчёт, созданный при обучении модели.")
     with TemporaryDirectory(prefix="pult-reproduction-") as temporary:
         data = Path(temporary)
         copytree(args.data_dir / "raw" / "weather", data / "raw" / "weather")

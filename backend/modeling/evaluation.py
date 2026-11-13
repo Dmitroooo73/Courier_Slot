@@ -17,7 +17,7 @@ from backend.pipeline.weather_archive import WEATHER_FEATURES
 
 from .explanations import feature_effects, feature_explanations
 from .features import CATEGORIES, ORDER_FEATURES
-from .scenarios import scenario_curves
+from .scenarios import scenario_curves, scenario_ranges
 
 
 WINDOW_DAYS = 28
@@ -43,7 +43,15 @@ CATBOOST_PARAMETERS = {
 }
 
 
-def fit_model(model: str, uses_weather: bool, train: pd.DataFrame, *, excluded: tuple[str, ...] = ()):
+def recency_weights(dates: pd.Series, half_life: float) -> np.ndarray:
+    """Weight halves every `half_life` days before the newest training date."""
+    newest = max(dates)
+    age = np.array([(newest - day).days for day in dates], dtype="float64")
+    return 0.5 ** (age / half_life)
+
+
+def fit_model(model: str, uses_weather: bool, train: pd.DataFrame, *, excluded: tuple[str, ...] = (),
+              half_life: float | None = None):
     numeric = [feature for feature in ORDER_FEATURES if feature not in excluded]
     if uses_weather:
         numeric.extend(feature for feature in WEATHER_FEATURES if feature not in excluded)
@@ -64,9 +72,12 @@ def fit_model(model: str, uses_weather: bool, train: pd.DataFrame, *, excluded: 
             ]
         )
         estimator = make_pipeline(preprocessing, Ridge(**RIDGE_PARAMETERS))
+        weight_argument = "ridge__sample_weight"
     else:
         estimator = CatBoostRegressor(cat_features=categories, **CATBOOST_PARAMETERS)
-    estimator.fit(train[columns], train["actual_orders"])
+        weight_argument = "sample_weight"
+    weights = {} if half_life is None else {weight_argument: recency_weights(train["date"], half_life)}
+    estimator.fit(train[columns], train["actual_orders"], **weights)
     return estimator, columns
 
 
@@ -74,10 +85,11 @@ def order_counts(predictions) -> list[int]:
     return [max(0, round(float(value))) for value in predictions]
 
 
-def predict(model: str, uses_weather: bool, train: pd.DataFrame, test: pd.DataFrame) -> list[int]:
+def predict(model: str, uses_weather: bool, train: pd.DataFrame, test: pd.DataFrame, *,
+            half_life: float | None = None) -> list[int]:
     if model == BASELINE:
         return test["orders_lag_7"].tolist()
-    estimator, columns = fit_model(model, uses_weather, train)
+    estimator, columns = fit_model(model, uses_weather, train, half_life=half_life)
     return order_counts(estimator.predict(test[columns]))
 
 
@@ -89,8 +101,8 @@ def predict_explained(
 
 
 def forecast_details(
-    model: str, uses_weather: bool, train: pd.DataFrame, test: pd.DataFrame, *,
-    include_scenarios: bool = False, fitted: tuple | None = None,
+    model: str, uses_weather: bool, train: pd.DataFrame | None, test: pd.DataFrame, *,
+    include_scenarios: bool = False, fitted: tuple | None = None, reference: dict | None = None,
 ) -> tuple[list[int], list[dict], dict[str, list[dict]]]:
     if model == BASELINE:
         columns = ["orders_lag_7"]
@@ -112,8 +124,13 @@ def forecast_details(
         inputs = test[columns]
         raw = estimator.predict(inputs)
         counts = order_counts(raw)
-        explanations = feature_explanations(model, estimator, train[columns], inputs, raw)
-    scenarios = scenario_curves(train, test, counts, columns, predict_rows) if include_scenarios else {}
+        training_inputs = train[columns] if train is not None else None
+        explanations = feature_explanations(model, estimator, training_inputs, inputs, raw,
+                                            center=reference["ridge_center"] if reference is not None else None)
+    scenarios = {}
+    if include_scenarios:
+        ranges = scenario_ranges(train) if reference is None else reference["scenario_ranges"]
+        scenarios = scenario_curves(ranges, test, counts, columns, predict_rows)
     return counts, explanations, scenarios
 
 
@@ -134,7 +151,8 @@ def split(frame: pd.DataFrame, start: date, end: date) -> tuple[pd.DataFrame, pd
     return train, test
 
 
-def importance_for_window(model: str, uses_weather: bool, train: pd.DataFrame, valid: pd.DataFrame) -> list[dict]:
+def importance_for_window(model: str, uses_weather: bool, train: pd.DataFrame, valid: pd.DataFrame, *,
+                          half_life: float | None = None) -> list[dict]:
     observed = valid["actual_orders"].to_numpy()
     if model == BASELINE:
         feature = "orders_lag_7"
@@ -148,7 +166,7 @@ def importance_for_window(model: str, uses_weather: bool, train: pd.DataFrame, v
             "permutation_mae_delta": float(shuffled_mae - original_mae),
         }]
 
-    estimator, columns = fit_model(model, uses_weather, train)
+    estimator, columns = fit_model(model, uses_weather, train, half_life=half_life)
     inputs = valid[columns]
     _, effects = feature_effects(model, estimator, train[columns], inputs)
     permutation = permutation_importance(
@@ -162,7 +180,7 @@ def importance_for_window(model: str, uses_weather: bool, train: pd.DataFrame, v
     ]
 
 
-def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> tuple[dict, tuple]:
+def evaluate(frame: pd.DataFrame, future: pd.DataFrame, *, half_life: float | None = None) -> tuple[dict, tuple]:
     dates = sorted(frame["date"].unique())
     development = dates[-WINDOW_DAYS * (VALIDATION_WINDOWS + 1) : -WINDOW_DAYS]
     windows = [
@@ -176,7 +194,7 @@ def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> tuple[dict, tuple]:
         by_zone: dict[str, list[tuple[int, int]]] = {}
         for (start, end), (train, valid) in zip(windows, folds, strict=True):
             observed = valid["actual_orders"].tolist()
-            predicted = predict(model, uses_weather, train, valid)
+            predicted = predict(model, uses_weather, train, valid, half_life=half_life)
             actual.extend(observed)
             predictions.extend(predicted)
             for zone, fact, estimate in zip(valid["zone_id"], observed, predicted, strict=True):
@@ -208,14 +226,14 @@ def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> tuple[dict, tuple]:
         {
             "start": start.isoformat(),
             "end": end.isoformat(),
-            "features": importance_for_window(**selected, train=train, valid=valid),
+            "features": importance_for_window(**selected, train=train, valid=valid, half_life=half_life),
         }
         for (start, end), (train, valid) in zip(windows, folds, strict=True)
     ]
     start, end = dates[-WINDOW_DAYS], dates[-1]
     train, holdout = split(frame, start, end)
     observed = holdout["actual_orders"].tolist()
-    predicted = predict(**selected, train=train, test=holdout)
+    predicted = predict(**selected, train=train, test=holdout, half_life=half_life)
     baseline = predict(BASELINE, False, train, holdout)
     predictions = [
         {"date": day.isoformat(), "zone_id": zone, "actual": fact, "forecast": estimate, "baseline": naive}
@@ -223,7 +241,7 @@ def evaluate(frame: pd.DataFrame, future: pd.DataFrame) -> tuple[dict, tuple]:
             holdout["date"], holdout["zone_id"], observed, predicted, baseline, strict=True
         )
     ]
-    fitted = (None, ["orders_lag_7"]) if best["model"] == BASELINE else fit_model(**selected, train=frame)
+    fitted = (None, ["orders_lag_7"]) if best["model"] == BASELINE else fit_model(**selected, train=frame, half_life=half_life)
     forecast, explanations, scenarios = forecast_details(
         **selected, train=frame, test=future, include_scenarios=True, fitted=fitted,
     )

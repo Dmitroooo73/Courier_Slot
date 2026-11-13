@@ -7,6 +7,7 @@ const weatherOrigins: Record<string, string> = {
   snapshot: "взята из учебного архива",
 };
 const runSteps: Record<string, string> = {
+  load_model: "Загрузка рабочей модели", predict: "Расчёт сохранённой моделью",
   prepare: "Подготовка", orders: "Проверка заказов", weather: "Загрузка погоды",
   model: "Обучение модели", publish: "Сохранение прогноза",
 };

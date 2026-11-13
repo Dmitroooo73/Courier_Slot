@@ -18,7 +18,8 @@ def runtime_versions() -> dict[str, str]:
     return {**model_versions(), "python": python_version(), "joblib": version("joblib")}
 
 
-def make_model_version(report: dict, estimator, columns: list[str], *, published: bool) -> ModelVersion:
+def make_model_version(report: dict, estimator, columns: list[str], *, status: str) -> ModelVersion:
+    """`status` records why the version was trained: published (legacy), registered or candidate."""
     created = datetime.now(timezone.utc)
     selected = report["selected"]
     model = selected["model"]
@@ -30,7 +31,7 @@ def make_model_version(report: dict, estimator, columns: list[str], *, published
         "version_id": f"{created:%Y%m%dT%H%M%S%fZ}-{uuid4().hex[:12]}",
         "created_at_utc": created.isoformat(),
         "target_date": report["target_date"],
-        "status": "published" if published else "registered",
+        "status": status,
         **selected,
         "training": report["training"],
         "dataset_sha256": report["dataset_sha256"],

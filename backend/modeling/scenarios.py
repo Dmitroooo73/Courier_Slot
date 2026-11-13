@@ -21,8 +21,18 @@ def scenario_values(history: pd.Series, original: float | None) -> list[float]:
     return sorted(values)
 
 
+def scenario_ranges(train: pd.DataFrame) -> dict[str, dict[str, list[float]]]:
+    ranges = {}
+    for zone, group in train.groupby("zone_id"):
+        ranges[zone] = {}
+        for feature in SCENARIO_FEATURES:
+            values = group[feature].dropna()
+            ranges[zone][feature] = [] if values.empty else [float(values.min()), float(values.max())]
+    return ranges
+
+
 def scenario_curves(
-    train: pd.DataFrame,
+    ranges: dict[str, dict[str, list[float]]],
     future: pd.DataFrame,
     counts: list[int],
     active_columns: list[str],
@@ -31,11 +41,11 @@ def scenario_curves(
     curves = {}
     for (_, inputs), base_orders in zip(future.iterrows(), counts, strict=True):
         zone = inputs["zone_id"]
-        history = train[train["zone_id"] == zone]
         zone_curves = []
         for feature in SCENARIO_FEATURES:
             base_value = float(inputs[feature]) if pd.notna(inputs[feature]) else None
-            values = scenario_values(history[feature], base_value)
+            bounds = ranges.get(zone, {}).get(feature, [])
+            values = scenario_values(pd.Series(bounds, dtype="float64"), base_value)
             if not values:
                 continue
             active = feature in active_columns

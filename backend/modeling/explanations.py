@@ -6,12 +6,17 @@ from scipy.sparse import issparse
 from .features import CATEGORIES
 
 
-def ridge_effects(estimator, train: pd.DataFrame, test: pd.DataFrame):
+def ridge_center(estimator, train: pd.DataFrame):
+    preprocessing = estimator.named_steps["columntransformer"]
+    return np.asarray(preprocessing.transform(train).mean(axis=0)).ravel()
+
+
+def ridge_effects(estimator, train: pd.DataFrame | None, test: pd.DataFrame, *, center=None):
     preprocessing = estimator.named_steps["columntransformer"]
     ridge = estimator.named_steps["ridge"]
     encoder = preprocessing.named_transformers_["categorical"]
     imputer = preprocessing.named_transformers_["numeric"].named_steps["simpleimputer"]
-    numeric = list(train.columns[len(CATEGORIES):])
+    numeric = list(test.columns[len(CATEGORIES):])
     owners = [
         column
         for column, categories in zip(CATEGORIES, encoder.categories_, strict=True)
@@ -22,22 +27,22 @@ def ridge_effects(estimator, train: pd.DataFrame, test: pd.DataFrame):
     encoded_owners = np.array(owners)
 
     # Center the encoded features so the base equals the mean training prediction.
-    center = np.asarray(preprocessing.transform(train).mean(axis=0)).ravel()
+    center = ridge_center(estimator, train) if center is None else np.asarray(center)
     encoded = preprocessing.transform(test)
     if issparse(encoded):
         encoded = encoded.toarray()
     encoded_effects = (encoded - center) * ridge.coef_
     grouped = np.column_stack([
         encoded_effects[:, encoded_owners == column].sum(axis=1)
-        for column in train.columns
+        for column in test.columns
     ])
     base = ridge.intercept_ + center @ ridge.coef_
     return np.full(len(test), base), grouped
 
 
-def feature_effects(model: str, estimator, train: pd.DataFrame, test: pd.DataFrame):
+def feature_effects(model: str, estimator, train: pd.DataFrame | None, test: pd.DataFrame, *, center=None):
     if model == "ridge":
-        return ridge_effects(estimator, train, test)
+        return ridge_effects(estimator, train, test, center=center)
     values = estimator.get_feature_importance(
         data=Pool(test, cat_features=list(CATEGORIES)), type="ShapValues", thread_count=2
     )
@@ -45,10 +50,10 @@ def feature_effects(model: str, estimator, train: pd.DataFrame, test: pd.DataFra
 
 
 def feature_explanations(
-    model: str, estimator, train: pd.DataFrame, test: pd.DataFrame, raw_predictions
+    model: str, estimator, train: pd.DataFrame | None, test: pd.DataFrame, raw_predictions, *, center=None,
 ) -> list[dict]:
     method = "ridge" if model == "ridge" else "catboost_shap"
-    bases, effects = feature_effects(model, estimator, train, test)
+    bases, effects = feature_effects(model, estimator, train, test, center=center)
     explanations = []
     for row, raw, base, impacts in zip(
         test.to_dict("records"), raw_predictions, bases, effects, strict=True

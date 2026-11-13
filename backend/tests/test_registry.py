@@ -13,8 +13,10 @@ class RegistryTests(unittest.TestCase):
         import pandas as pd
 
         from backend.modeling.evaluation import BASELINE, fit_model, forecast_details, order_counts
+        from backend.modeling.explanations import ridge_center
         from backend.modeling.registry import load_estimator, make_model_version
         from backend.modeling.report import dataset_digest, model_parameters
+        from backend.modeling.scenarios import scenario_ranges
 
         first = date(2026, 9, 1)
         training = pd.DataFrame([
@@ -34,21 +36,27 @@ class RegistryTests(unittest.TestCase):
                     selected = {"model": model, "uses_weather": weather}
                     fitted = (None, ["orders_lag_7"]) if model == BASELINE else fit_model(**selected, train=training)
                     with patch("backend.modeling.evaluation.fit_model", side_effect=AssertionError("unexpected fit")):
-                        counts, _, _ = forecast_details(**selected, train=training, test=future, fitted=fitted)
+                        expected = forecast_details(**selected, train=training, test=future, fitted=fitted, include_scenarios=True)
                     report = {"selected": selected, "target_date": future["date"].iloc[0].isoformat(),
                               "training": {"start": first.isoformat(), "end": training["date"].max().isoformat(), "rows": len(training)},
                               "dataset_sha256": dataset_digest(training), "orders_source": "synthetic", "seed": 42,
                               "parameters": model_parameters(), "validation": [{**selected, **scores, "windows": []}],
                               "holdout": {"start": "2026-09-22", "end": "2026-09-28", "train_through": "2026-09-20",
                                           "selected": scores, "baseline": scores}}
-                    saved = make_model_version(report, *fitted, published=True)
+                    saved = make_model_version(report, *fitted, status="published")
                     store.save_model(saved)
                     loaded = store.model_version(saved.metadata["version_id"])
                     self.assertEqual(loaded.metadata, saved.metadata)
                     self.assertEqual(loaded.metadata["features"], fitted[1])
                     estimator = load_estimator(loaded)
                     predicted = future["orders_lag_7"].tolist() if estimator is None else order_counts(estimator.predict(future[fitted[1]]))
-                    self.assertEqual(predicted, counts)
+                    self.assertEqual(predicted, expected[0])
+                    reference = {"scenario_ranges": scenario_ranges(training),
+                                 "ridge_center": ridge_center(fitted[0], training[fitted[1]]).tolist() if model == "ridge" else None}
+                    with patch("backend.modeling.evaluation.fit_model", side_effect=AssertionError("unexpected fit")):
+                        actual = forecast_details(**selected, train=None, test=future, fitted=(estimator, fitted[1]),
+                                                  include_scenarios=True, reference=reference)
+                    self.assertEqual(actual, expected)
                     with self.assertRaisesRegex(ValueError, "Контрольная сумма"):
                         load_estimator(replace(loaded, artifact=b"changed"))
                     if estimator is not None:
