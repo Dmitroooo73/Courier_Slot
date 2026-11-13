@@ -26,9 +26,11 @@ def forecast_from_saved(target: date, data: Path, journal: dict, saved: ModelVer
         **selected, train=None, test=future, include_scenarios=True,
         fitted=(estimator, metadata["features"]), reference=active["reference"],
     )
+    # zone_forecasts sorts zones by overload, so explanations are attached by zone, not by position.
+    by_zone = dict(zip(future["zone_id"], explanations, strict=True))
     forecasts = zone_forecasts(dict(zip(future["zone_id"], counts, strict=True)))
-    for forecast, explanation in zip(forecasts, explanations, strict=True):
-        forecast["explanation"] = explanation
+    for forecast in forecasts:
+        forecast["explanation"] = by_zone[forecast["zone_id"]]
     return {
         **active["evaluation"],
         "target_date": target.isoformat(),
