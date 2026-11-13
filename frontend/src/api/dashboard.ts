@@ -28,6 +28,7 @@ export interface Forecast {
   model: string;
   uses_weather?: boolean;
   model_version_id?: string | null;
+  forecast_mode?: "saved_model";
   weather: Weather;
   forecasts: ZoneForecast[];
 }
@@ -47,7 +48,7 @@ export interface ModelVersion extends ModelChoice {
   version_id: string;
   created_at_utc: string;
   target_date: string;
-  status: "registered" | "published";
+  status: "registered" | "published" | "candidate";
   training: { start: string; end: string; rows: number };
   dataset_sha256: string;
   orders_source: string;
@@ -61,8 +62,82 @@ export interface ModelVersion extends ModelChoice {
   artifact: { format: string; sha256: string; bytes: number };
 }
 
+export type ComparedVersion = "active" | "candidate" | "baseline";
+
+export interface CandidateJob {
+  candidate_id: string;
+  trigger_key: string;
+  status: "queued" | "training" | "activated" | "rejected" | "failed";
+  trigger: { kind: "monitoring" | "manual"; end_date: string; zones: string[]; requested_by: string };
+  active_version_id: string;
+  created_at_utc: string;
+  finished_at_utc?: string;
+  version_id?: string;
+  control?: { start: string; end: string };
+  training?: { end: string; half_life_days: number };
+  selected?: ModelChoice;
+  comparison?: {
+    scores: Record<ComparedVersion, Score & { by_zone: Record<string, Score> }>;
+    points: ({ date: string; zone_id: string; actual: number } & Record<ComparedVersion, number>)[];
+  };
+  decision?: { accepted: boolean; improvement_percent?: number; summary: string;
+    checks: { id: string; passed: boolean; text: string }[] };
+  error?: string | null;
+}
+
+export interface Activation {
+  activation_id: string;
+  action: "initialize" | "activate" | "rollback";
+  version_id: string;
+  previous_version_id: string | null;
+  candidate_id: string | null;
+  actor: string;
+  reason: string;
+  at_utc: string;
+}
+
+export interface ModelLifecycleInfo {
+  rules: { retrain: string; candidate: string; promotion: string; control_days: number;
+    half_life_days: number; min_improvement_percent: number };
+  active_since: string | null;
+  candidates: CandidateJob[];
+  activations: Activation[];
+  rollback_to: ModelVersion | null;
+  manual_check: { control_end: string; issue: string | null };
+}
+
+export interface LifecycleDemoSummary {
+  demo_version: string;
+  rules: { retrain: string; candidate: string; promotion: string };
+  generated_at_utc: string;
+  shift: { zone_id: string; factor: number; start: string };
+  period: { start: string; end: string };
+  first_version_id: string;
+  events: DemoEvent[];
+  timeline: { date: string; version_id: string; forecast: Record<string, number>; actual: Record<string, number> }[];
+  versions: Record<string, ModelChoice & { training: { start: string; end: string; rows: number } }>;
+  checks: { repeated_signal_creates_job?: boolean; published_forecasts_unchanged_after_rollback?: boolean };
+  candidates: number;
+}
+
+export interface DemoEvent {
+  date: string;
+  kind: "initialize" | "rollback" | "monitoring" | "candidate";
+  version_id?: string;
+  status?: MonitoringDecision["status"];
+  previous?: MonitoringDecision["status"];
+  job?: Pick<CandidateJob, "trigger" | "status" | "decision" | "control" | "version_id">;
+}
+
+export async function getLifecycleDemo(signal: AbortSignal): Promise<LifecycleDemoSummary | null> {
+  const response = await fetch("/api/lifecycle-demo", { signal, cache: "no-store" });
+  if (!response.ok) throw new Error("Не удалось загрузить учебный цикл.");
+  return (await response.json()).demo;
+}
+
 export async function getModelVersions(before: string | null, signal: AbortSignal): Promise<{
-  versions: ModelVersion[]; next_before: string | null;
+  versions: ModelVersion[]; next_before: string | null; active_version: ModelVersion | null;
+  lifecycle?: ModelLifecycleInfo;
 }> {
   const params = new URLSearchParams();
   if (before) params.set("before", before);
@@ -93,6 +168,12 @@ export interface Metrics {
   selected: ModelChoice;
   feature_importance?: ImportanceWindow[];
   scenarios?: Record<string, ScenarioCurve[]>;
+  promotion?: {
+    candidate_id: string;
+    control: { start: string; end: string };
+    scores: Record<ComparedVersion, Score>;
+    summary: string;
+  };
   data_quality?: {
     checked_days: number;
     checked_orders: number;
@@ -203,6 +284,22 @@ export interface DashboardData {
   monitoring_decisions?: MonitoringDecision[];
   input_drift?: InputDrift | null;
   forecast_model?: ModelVersion | null;
+}
+
+export interface WeatherNow {
+  temperature_c: number;
+  apparent_c: number | null;
+  precipitation_mm: number | null;
+  wind_ms: number | null;
+  description: string;
+  observed_at: string;
+  stale: boolean;
+}
+
+export async function getWeatherNow(signal: AbortSignal): Promise<WeatherNow> {
+  const response = await fetch("/api/weather/now", { signal, cache: "no-store" });
+  if (!response.ok) throw new Error("Погода сейчас недоступна.");
+  return response.json() as Promise<WeatherNow>;
 }
 
 export async function getDashboard(date: string, signal: AbortSignal): Promise<DashboardData> {

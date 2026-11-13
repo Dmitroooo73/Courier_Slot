@@ -5,9 +5,11 @@ import type { DashboardData, Forecast, ZoneForecast } from "../api/dashboard";
 import { ForecastExplanation } from "../components/ForecastExplanation";
 import { HistoryChart } from "../components/HistoryChart";
 import { InputDrift } from "../components/InputDrift";
+import { LifecycleDemo } from "../components/LifecycleDemo";
 import { LiveMonitoring } from "../components/LiveMonitoring";
 import { ModelTable } from "../components/ModelTable";
 import { ModelRegistry } from "../components/ModelRegistry";
+import { NowWeather } from "../components/NowWeather";
 import { Monitoring } from "../components/Monitoring";
 import { ZoneMap } from "../components/ZoneMap";
 import { ZonePicker } from "../components/ZonePicker";
@@ -74,7 +76,7 @@ function ZoneDetails({ zone, forecast }: { zone: ZoneForecast; forecast: Forecas
       <dl className="zone-facts">
         <div><dt>Модель</dt><dd>{modelName(forecast.model)}{forecast.uses_weather ? " · с погодой" : ""}</dd></div>
         <div>
-          <dt>Погода в Москве</dt>
+          <dt>Погода в прогнозе</dt>
           <dd>
             {weather.mean_temperature_c === null ? "—" : number(weather.mean_temperature_c) + " °C"}
             {" · "}
@@ -92,7 +94,7 @@ function ZoneDetails({ zone, forecast }: { zone: ZoneForecast; forecast: Forecas
 export function Dashboard() {
   const auth = useAuth();
   const [view, setView] = useState(currentView);
-  const [monitorMode, setMonitorMode] = useState<"live" | "drift" | "demo">("live");
+  const [monitorMode, setMonitorMode] = useState<"live" | "drift" | "demo" | "lifecycle">("live");
   const [data, setData] = useState<DashboardData | null>(null);
   const [zoneId, setZoneId] = useState("east");
   const [date, setDate] = useState("");
@@ -226,6 +228,7 @@ export function Dashboard() {
 
         {!accountView && view.id !== "courier" && <div className="status-bar">
           <span><i />Синтетические заказы</span>
+          <NowWeather />
           <span aria-live="polite">
             {updatedAt ? "Данные получены в " + formatTime(updatedAt) + " мск" : "Подключение к локальному API"}
           </span>
@@ -291,7 +294,13 @@ export function Dashboard() {
             <div>
               <p className="eyebrow">ГЛАВНЫЙ РЕЗУЛЬТАТ</p>
               <h2>Средний промах — {number(metrics.holdout.selected.mae_orders)} заказа</h2>
-              <p className="panel-copy">Столько заказов в среднем составляла разница между прогнозом и фактом в одной зоне за день.</p>
+              <p className="panel-copy">{forecast?.forecast_mode === "saved_model"
+                ? "Это результат исходной проверки модели. Фактическую ошибку новых прогнозов можно посмотреть в мониторинге после закрытия суток."
+                : "Столько заказов в среднем составляла разница между прогнозом и фактом в одной зоне за день."}</p>
+              {metrics.promotion && <p className="quality-promotion"><strong>Почему эта версия в работе.</strong>{" "}
+                На контрольной неделе {formatDate(metrics.promotion.control.start, true)} — {formatDate(metrics.promotion.control.end, true)} она
+                промахивалась на {number(metrics.promotion.scores.candidate.mae_orders)} заказа против{" "}
+                {number(metrics.promotion.scores.active.mae_orders)} у прежней версии.</p>}
             </div>
             <dl>
               <div><dt>Модель в работе</dt><dd>{modelName(metrics.selected.model)}{metrics.selected.uses_weather ? " · с погодой" : ""}</dd></div>
@@ -306,7 +315,7 @@ export function Dashboard() {
                 ошибки в ID, зоне и времени заказа останавливают публикацию.</p>
             </details>}
           </section>}
-          <ModelRegistry key={data?.forecast_model?.version_id ?? "archive"} forecast={forecast} selected={data?.forecast_model} />
+          <ModelRegistry key={data?.forecast_model?.version_id ?? "archive"} forecast={forecast} selected={data?.forecast_model} auth={auth} />
           <section className="panel history-panel">
             <div className="panel-heading">
               <div><p className="eyebrow">02 / ПРОВЕРКА</p><h2>Факт и прогноз</h2></div>
@@ -341,16 +350,19 @@ export function Dashboard() {
               <button className="refresh-button" aria-pressed={monitorMode === "live"} onClick={() => setMonitorMode("live")}>По заказам</button>
               <button className="refresh-button" aria-pressed={monitorMode === "drift"} onClick={() => setMonitorMode("drift")}>Изменение данных</button>
               <button className="refresh-button" aria-pressed={monitorMode === "demo"} onClick={() => setMonitorMode("demo")}>Учебный сценарий</button>
+              <button className="refresh-button" aria-pressed={monitorMode === "lifecycle"} onClick={() => setMonitorMode("lifecycle")}>Замена модели</button>
             </div>
             <p className="monitor-mode-description">{monitorMode === "live"
               ? "Сравниваем заранее сохранённые прогнозы с заказами после завершения каждого дня."
               : monitorMode === "drift" ? "Сравниваем данные, которые получает модель, с опорным периодом."
-                : "Проигрываем 14 прошлых дней, чтобы показать, как система замечает рост ошибки."}</p>
+                : monitorMode === "lifecycle" ? "Полный цикл на учебных данных: рост ошибки → новая версия → проверка → замена → откат."
+                  : "Проигрываем 14 прошлых дней, чтобы показать, как система замечает рост ошибки."}</p>
             {monitorMode === "live" ? (
               <LiveMonitoring observations={data?.observations ?? []} decisions={data?.monitoring_decisions ?? []} zoneId={selected?.zone_id ?? zoneId} zonePicker={zonePicker} />
             ) : monitorMode === "drift" ? (
               <InputDrift report={data?.input_drift} zoneId={selected?.zone_id ?? zoneId} zonePicker={zonePicker} loading={loading} />
-            ) : <Monitoring key={selectionKey} points={history} zonePicker={zonePicker} validationMae={validationMae} />}
+            ) : monitorMode === "lifecycle" ? <LifecycleDemo zoneNames={Object.fromEntries(zones.map((zone) => [zone.zone_id, zone.zone_name]))} />
+              : <Monitoring key={selectionKey} points={history} zonePicker={zonePicker} validationMae={validationMae} />}
           </>
         )}
 
