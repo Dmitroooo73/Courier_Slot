@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" font-family="Segoe UI, Arial, sans-serif" role="img" aria-labelledby="title">
+  <title id="title">Архитектура «Пульта доставки»: источники, обработка, хранение, представление</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#53635d"/>
+    </marker>
+    <style>
+      .head { font-size: 15px; font-weight: 700; letter-spacing: 1.5px; fill: #236a53; }
+      .box { fill: #ffffff; stroke: #b9cdc1; stroke-width: 1.5; }
+      .accent { fill: #e5f0ea; stroke: #236a53; stroke-width: 1.5; }
+      .group { fill: #f1f5f3; stroke: #cfdcd4; stroke-width: 1.5; }
+      .title { font-size: 18px; font-weight: 700; fill: #202e2a; }
+      .text { font-size: 15px; fill: #53635d; }
+      .step { font-size: 16px; font-weight: 600; fill: #202e2a; }
+      .line { stroke: #53635d; stroke-width: 1.6; fill: none; }
+      .label { font-size: 14px; fill: #53635d; }
+    </style>
+  </defs>
+  <rect width="1280" height="640" fill="#ffffff"/>
+
+  <text class="head" x="30" y="40">ИСТОЧНИКИ</text>
+  <text class="head" x="330" y="40">ОБРАБОТКА · WORKER</text>
+  <text class="head" x="690" y="40">ХРАНЕНИЕ</text>
+  <text class="head" x="1010" y="40">ПРЕДСТАВЛЕНИЕ</text>
+
+  <!-- Sources -->
+  <rect class="box" x="30" y="80" width="250" height="96" rx="10"/>
+  <text class="title" x="46" y="110">Журнал заказов</text>
+  <text class="text" x="46" y="134">события в тексте: поля</text>
+  <text class="text" x="46" y="152">вразнобой, служебные строки,</text>
+  <text class="text" x="46" y="170">повторы; синтетика, seed 42</text>
+
+  <rect class="box" x="30" y="206" width="250" height="96" rx="10"/>
+  <text class="title" x="46" y="236">Open-Meteo</text>
+  <text class="text" x="46" y="258">Previous Runs API, JSON</text>
+  <text class="text" x="46" y="276">прогноз погоды за 48 часов:</text>
+  <text class="text" x="46" y="294">температура, осадки</text>
+
+  <!-- Worker -->
+  <rect class="group" x="320" y="62" width="330" height="440" rx="12"/>
+  <text class="text" x="336" y="86">расписание: 20:00 прогноз, 00:10 сверка</text>
+  <rect class="box" x="336" y="100" width="298" height="52" rx="8"/>
+  <text class="step" x="350" y="122">1. Загрузка и разбор</text>
+  <text class="text" x="350" y="141">догрузка, повторы при сбоях, журнал</text>
+  <rect class="box" x="336" y="162" width="298" height="52" rx="8"/>
+  <text class="step" x="350" y="184">2. Проверка качества</text>
+  <text class="text" x="350" y="203">схема, полнота суток, аномалии</text>
+  <rect class="accent" x="336" y="224" width="298" height="52" rx="8"/>
+  <text class="step" x="350" y="246">3. Признаки features_for_day</text>
+  <text class="text" x="350" y="265">общая для обучения и прогноза</text>
+  <rect class="box" x="336" y="286" width="298" height="52" rx="8"/>
+  <text class="step" x="350" y="308">4. Прогноз рабочей версией</text>
+  <text class="text" x="350" y="327">сохранённая модель, без обучения</text>
+  <rect class="box" x="336" y="348" width="298" height="52" rx="8"/>
+  <text class="step" x="350" y="370">5. Сверка факта и мониторинг</text>
+  <text class="text" x="350" y="389">ошибка по неделям, дрейф входов</text>
+  <rect class="accent" x="336" y="410" width="298" height="76" rx="8"/>
+  <text class="step" x="350" y="432">6. Новая версия модели</text>
+  <text class="text" x="350" y="451">обучение по сигналу → контрольная</text>
+  <text class="text" x="350" y="469">неделя → замена или отказ; откат</text>
+
+  <!-- Storage -->
+  <rect class="box" x="690" y="80" width="270" height="78" rx="10"/>
+  <text class="title" x="706" y="108">data/</text>
+  <text class="text" x="706" y="130">журналы, CSV, ответы API —</text>
+  <text class="text" x="706" y="148">кэш для повторных запусков</text>
+
+  <rect class="accent" x="690" y="190" width="270" height="220" rx="10"/>
+  <text class="title" x="706" y="218">PostgreSQL</text>
+  <text class="text" x="706" y="244">• прогнозы и метрики</text>
+  <text class="text" x="706" y="266">• исходные прогнозы и факты</text>
+  <text class="text" x="706" y="288">• решения мониторинга, дрейф</text>
+  <text class="text" x="706" y="310">• реестр моделей, рабочая версия</text>
+  <text class="text" x="706" y="332">• замены моделей и проверки</text>
+  <text class="text" x="706" y="354">• журнал запусков</text>
+  <text class="text" x="706" y="376">• аккаунты и сессии</text>
+  <text class="text" x="706" y="398">init создаёт таблицы при запуске</text>
+
+  <rect class="box" x="690" y="440" width="270" height="62" rx="10"/>
+  <text class="title" x="706" y="466">MinIO</text>
+  <text class="text" x="706" y="488">аватары пользователей (S3)</text>
+
+  <!-- Presentation -->
+  <rect class="box" x="1010" y="80" width="240" height="78" rx="10"/>
+  <text class="title" x="1026" y="108">Open-Meteo Forecast</text>
+  <text class="text" x="1026" y="130">погода сейчас,</text>
+  <text class="text" x="1026" y="148">кэш 10 минут</text>
+
+  <rect class="accent" x="1010" y="190" width="240" height="120" rx="10"/>
+  <text class="title" x="1026" y="218">web · FastAPI</text>
+  <text class="text" x="1026" y="242">/api/dashboard</text>
+  <text class="text" x="1026" y="262">/api/models, /api/admin</text>
+  <text class="text" x="1026" y="282">/api/weather/now</text>
+  <text class="text" x="1026" y="302">аккаунты: Argon2id, токены</text>
+
+  <rect class="box" x="1010" y="350" width="240" height="96" rx="10"/>
+  <text class="title" x="1026" y="378">Браузер · React + TS</text>
+  <text class="text" x="1026" y="400">7 вкладок для диспетчера</text>
+  <text class="text" x="1026" y="418">и администратора,</text>
+  <text class="text" x="1026" y="436">обновление раз в минуту</text>
+
+  <rect class="box" x="1010" y="486" width="240" height="78" rx="10"/>
+  <text class="title" x="1026" y="514">OpenStreetMap</text>
+  <text class="text" x="1026" y="536">границы округов → карта</text>
+  <text class="text" x="1026" y="554">(собрана один раз, ODbL)</text>
+
+  <!-- Arrows -->
+  <path class="line" d="M280 128 H336" marker-end="url(#arrow)"/>
+  <path class="line" d="M280 254 H300 V140 H336" marker-end="url(#arrow)"/>
+  <path class="line" d="M634 120 H690" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="label" x="640" y="112">кэш</text>
+  <path class="line" d="M634 312 H690" marker-end="url(#arrow)"/>
+  <path class="line" d="M634 374 H690" marker-end="url(#arrow)"/>
+  <path class="line" d="M634 448 H662 V400 H690" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="label" x="560" y="535">worker читает и пишет только через хранилище;</text>
+  <text class="label" x="560" y="553">web не обучает модели и не меняет прогнозы</text>
+  <path class="line" d="M960 250 H1010" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path class="line" d="M960 471 H985 V296 H1010" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path class="line" d="M1130 158 V190" marker-end="url(#arrow)"/>
+  <path class="line" d="M1130 310 V350" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="label" x="1138" y="335">HTTP API</text>
+  <path class="line" d="M1130 486 V446" marker-end="url(#arrow)"/>
+
+  <text class="label" x="30" y="610">Docker Compose: db · init · worker · web · minio. Конфигурация — переменные окружения, запуск — docker compose up -d --build.</text>
+</svg>
