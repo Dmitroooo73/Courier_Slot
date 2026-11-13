@@ -49,6 +49,9 @@ class LifecycleRuleTests(unittest.TestCase):
         self.assertFalse(rejected["accepted"])
         self.assertIn("меньше требуемых", rejected["summary"])
         self.assertFalse(decide(scores(9.0, baseline=8.9))["accepted"])
+        perfect = decide({name: {"mae_orders": 0.0} for name in ("active", "candidate", "baseline")})
+        self.assertFalse(perfect["accepted"], "no promotion without an improvement")
+        self.assertIn("не ошибалась", perfect["summary"])
 
     def test_clean_window_starts_two_days_after_training(self):
         from backend.modeling.lifecycle import clean_window_issue

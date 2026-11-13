@@ -20,7 +20,8 @@ from .report import HISTORY_DAYS, evaluate_report, order_inputs, report_inputs, 
 
 RETRAIN_RULE = "retrain-v1"
 CANDIDATE_RULE = "candidate-v1"
-PROMOTION_RULE = "promotion-v1"
+# v2: a working version with zero error on the control week cannot be "improved"; v1 decisions keep their label.
+PROMOTION_RULE = "promotion-v2"
 RULES = {"retrain": RETRAIN_RULE, "candidate": CANDIDATE_RULE, "promotion": PROMOTION_RULE}
 CONTROL_DAYS = 7
 HALF_LIFE_DAYS = 14
@@ -209,20 +210,23 @@ def compare(control, versions: dict[str, tuple[dict, object]]) -> dict:
 
 
 def decide(scores: dict) -> dict:
-    """promotion-v1: at least 5% smaller MAE than the working version and not worse than last week's orders."""
+    """promotion-v2: at least 5% smaller, non-zero MAE of the working version, and not worse than last week's orders."""
     active, candidate, baseline = (scores[name]["mae_orders"] for name in ("active", "candidate", "baseline"))
     limit = active * (1 - MIN_IMPROVEMENT)
     gain = 100 * (1 - candidate / active) if active else 0.0
     required = round(100 * MIN_IMPROVEMENT)
     checks = [
-        {"id": "improvement", "passed": candidate <= limit,
-         "text": f"Средний промах {ru(candidate)} против {ru(active)} у рабочей версии; нужно не больше {ru(limit)}."},
+        {"id": "improvement", "passed": active > 0 and candidate <= limit,
+         "text": f"Средний промах {ru(candidate)} против {ru(active)} у рабочей версии; нужно не больше {ru(limit)}."
+                 if active > 0 else "Рабочая версия не ошиблась ни разу на контрольной неделе — улучшать нечего."},
         {"id": "baseline", "passed": candidate <= baseline,
          "text": f"Не хуже прогноза по прошлой неделе: {ru(candidate)} против {ru(baseline)}."},
     ]
     accepted = all(check["passed"] for check in checks)
     if accepted:
         summary = f"Новая версия точнее на {ru(gain, 1)}% — переводим её в работу."
+    elif active <= 0:
+        summary = "Рабочая версия не ошибалась на контрольной неделе. Оставляем её."
     elif gain <= 0:
         summary = f"Новая версия не точнее рабочей: промах больше на {ru(-gain, 1)}%. Оставляем рабочую."
     elif not checks[0]["passed"]:

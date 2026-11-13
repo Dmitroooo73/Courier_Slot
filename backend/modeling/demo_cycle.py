@@ -24,7 +24,7 @@ from backend.pipeline.results import EVALUATIONS, FileResults, result_store
 from .lifecycle import RULES, request_candidate, rollback, train_first_version, update_models
 
 
-DEMO_VERSION = "lifecycle-demo-v2"  # v2: replay on weather-aware synthetic orders
+DEMO_VERSION = "lifecycle-demo-v3"  # v3: weather-aware orders and the promotion-v2 rule
 FIRST_TARGET = date(2026, 10, 13)
 MANUAL_CHECK = date(2026, 10, 19)
 SHIFT_START = date(2026, 10, 20)
