@@ -1,8 +1,22 @@
-import type { ForecastPoint, Observation, Prediction } from "./api/dashboard";
+import type { ForecastPoint, MonitoringDecision, Prediction } from "./api/dashboard";
 
 export const WEEK_DAYS = 7;
 export const REPLAY_DAYS = 2 * WEEK_DAYS;
 export const ERROR_LIMIT_INCREASE = 30;
+
+export const monitoringMessages = {
+  pending: "Собираем первую неделю",
+  normal: "Точность на обычном уровне",
+  warning: "Модель стала чаще ошибаться",
+  alert: "Прогноз пора обновить",
+};
+
+export function decisionAdvice(decision: MonitoringDecision): string {
+  if (decision.status === "pending") return `Для первого недельного вывода нужно ${decision.rule.week_days} дней подряд. Пока проверено: ${decision.points.length}. Продолжаем собирать итоги дней.`;
+  if (decision.status === "normal") return "В полных неделях промах не превысил допустимый уровень. Продолжаем наблюдение.";
+  if (decision.status === "warning") return "В одной полной неделе промах выше допустимого. Проверим следующую неделю; пока модель не меняем.";
+  return "Две недели подряд промах выше допустимого. Рекомендуем обучить и проверить новую модель. Автоматической замены пока нет.";
+}
 
 interface Periods {
   reference: Prediction[];
@@ -38,30 +52,6 @@ function signal(weeks: ReturnType<typeof assessWeek>[]): "pending" | "normal" | 
   if (exceeded === 2) return "alert";
   if (exceeded === 1) return "warning";
   return weeks.some((week) => week.complete) ? "normal" : "pending";
-}
-
-export function observedMonitoring(observations: Observation[], zone: string) {
-  const closed = observations.flatMap((record) => {
-    const actual = record.actuals?.[zone];
-    const forecast = record.forecasts[zone];
-    const reference = record.validation_mae[zone];
-    if (actual === undefined || forecast === undefined || reference === undefined) return [];
-    return [{ date: record.target_date, actual, forecast, reference }];
-  }).sort((left, right) => right.date.localeCompare(left.date));
-
-  const points: typeof closed = [];
-  for (const point of closed.slice(0, REPLAY_DAYS)) {
-    const previous = points.at(-1);
-    if (previous && Date.parse(previous.date) - Date.parse(point.date) !== 86_400_000) break;
-    points.push(point);
-  }
-  points.reverse();
-  const blocks = [points.slice(0, -WEEK_DAYS), points.slice(-WEEK_DAYS)].filter((block) => block.length);
-  const weeks = blocks.map((block) => {
-    const limit = mean(block, (point) => point.reference) * (1 + ERROR_LIMIT_INCREASE / 100);
-    return { ...assessWeek(block, limit), limit, start: block[0].date, end: block.at(-1)!.date };
-  });
-  return { points, weeks, status: signal(weeks) };
 }
 
 export function monitoringSnapshot(periods: Periods, played: number, increase: number, validationMae?: number) {

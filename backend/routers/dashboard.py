@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.pipeline.orders import ZONES
+from backend.pipeline.monitoring import RULE_VERSION
 from backend.pipeline.results import result_store
 from backend.services.dashboard import available_dates, read_forecast, recent_runs
 
@@ -44,7 +45,19 @@ def dashboard(directory: DataDirectory, target: TargetDate = None) -> dict:
         "metrics": metrics,
         "runs": recent_runs(directory),
         "observations": result_store(directory).observations(),
+        "monitoring_decisions": result_store(directory).latest_decisions(RULE_VERSION),
     }
+
+
+@router.get("/monitoring/decisions")
+def monitoring_decisions(directory: DataDirectory, zone: str,
+                         before: date | None = None,
+                         limit: Annotated[int, Query(ge=1, le=30)] = 10) -> dict:
+    if zone not in {item.id for item in ZONES}:
+        raise HTTPException(422, "Выберите существующую зону доставки.")
+    records = result_store(directory).decisions(RULE_VERSION, zone, limit + 1, before)
+    return {"decisions": records[:limit],
+            "next_before": records[limit - 1]["end_date"] if len(records) > limit else None}
 
 
 @router.get("/zones")

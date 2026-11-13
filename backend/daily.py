@@ -12,6 +12,7 @@ from uuid import uuid4
 from .modeling.report import FIRST_MODEL_DATE, build_report
 from .pipeline.forecast import forecast_cutoff
 from .pipeline.observations import collect_closed_days, observation_record
+from .pipeline.monitoring import persist_decisions
 from .pipeline.orders import MOSCOW
 from .pipeline.results import EVALUATIONS, FileResults, PostgresResults, StorageUnavailable, latest_location, result_store
 
@@ -111,8 +112,11 @@ def settle_observations(data: Path, now: datetime) -> None:
     store = result_store(data)
     with result_lock(store, data):
         count = collect_closed_days(store, data, now)
+        decisions = persist_decisions(store, now)
     if count:
         print(f"Сверили прогнозы с закрытыми сутками — {count}.", flush=True)
+    if decisions:
+        print(f"Сохранили решения мониторинга по зонам — {decisions}.", flush=True)
 
 
 def watch(data: Path) -> None:

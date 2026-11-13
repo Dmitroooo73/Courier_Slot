@@ -65,7 +65,7 @@ class FileResults:
     def observation_path(self, target: date) -> Path:
         return self.directory / "observations" / f"{target}.json"
 
-    def observations(self, limit: int = 30) -> list[dict]:
+    def observations(self, limit: int | None = 30) -> list[dict]:
         paths = sorted((self.directory / "observations").glob("????-??-??.json"), reverse=True)
         return [read_artifact(path) for path in paths[:limit]]
 
@@ -80,6 +80,26 @@ class FileResults:
 
     def save_observation(self, target: date, record: dict) -> None:
         write_json(self.observation_path(target), record)
+
+    def save_decisions(self, decisions: list[dict]) -> int:
+        saved = 0
+        for record in decisions:
+            path = self.directory / "monitoring" / record["rule_version"] / record["zone_id"] / (record["end_date"] + ".json")
+            if not path.exists():
+                write_json(path, record)
+                saved += 1
+        return saved
+
+    def decisions(self, rule_version: str, zone: str, limit: int = 30, before: date | None = None) -> list[dict]:
+        paths = sorted((self.directory / "monitoring" / rule_version / zone).glob("????-??-??.json"), reverse=True)
+        if before:
+            paths = [path for path in paths if path.stem < before.isoformat()]
+        return [read_artifact(path) for path in paths[:limit]]
+
+    def latest_decisions(self, rule_version: str) -> list[dict]:
+        root = self.directory / "monitoring" / rule_version
+        return [record for zone in sorted(root.glob("*")) if zone.is_dir()
+                for record in self.decisions(rule_version, zone.name, limit=1)]
 
     def publish(
         self, kind: str, target: date, report: dict, run: dict | None = None, observation: dict | None = None
@@ -129,6 +149,15 @@ class PostgresResults:
                     payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
                 )
             """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS monitoring_decisions (
+                    rule_version text NOT NULL,
+                    zone_id text NOT NULL,
+                    end_date date NOT NULL,
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+                    PRIMARY KEY (rule_version, zone_id, end_date)
+                )
+            """)
 
     def location(self, kind: str, target: date) -> str:
         return f"postgresql:forecast_reports/{kind}/{target}"
@@ -172,7 +201,7 @@ class PostgresResults:
                 (run["run_id"], Jsonb(run)),
             )
 
-    def observations(self, limit: int = 30) -> list[dict]:
+    def observations(self, limit: int | None = 30) -> list[dict]:
         with self.connection() as connection:
             rows = connection.execute(
                 "SELECT payload FROM forecast_observations ORDER BY target_date DESC LIMIT %s", (limit,)
@@ -196,6 +225,37 @@ class PostgresResults:
                 UPDATE forecast_observations SET payload = %s
                 WHERE target_date = %s AND payload->'actuals' = 'null'::jsonb
             """, (Jsonb(record), target))
+
+    def save_decisions(self, decisions: list[dict]) -> int:
+        from psycopg.types.json import Jsonb
+
+        saved = 0
+        with self.connection() as connection:
+            for record in decisions:
+                result = connection.execute("""
+                    INSERT INTO monitoring_decisions (rule_version, zone_id, end_date, payload)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (rule_version, zone_id, end_date) DO NOTHING
+                """, (record["rule_version"], record["zone_id"], record["end_date"], Jsonb(record)))
+                saved += result.rowcount
+        return saved
+
+    def decisions(self, rule_version: str, zone: str, limit: int = 30, before: date | None = None) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute("""
+                SELECT payload FROM monitoring_decisions
+                WHERE rule_version = %s AND zone_id = %s AND (%s::date IS NULL OR end_date < %s)
+                ORDER BY end_date DESC LIMIT %s
+            """, (rule_version, zone, before, before, limit)).fetchall()
+        return [row[0] for row in rows]
+
+    def latest_decisions(self, rule_version: str) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute("""
+                SELECT DISTINCT ON (zone_id) payload FROM monitoring_decisions
+                WHERE rule_version = %s ORDER BY zone_id, end_date DESC
+            """, (rule_version,)).fetchall()
+        return [row[0] for row in rows]
 
     def publish(
         self, kind: str, target: date, report: dict, run: dict | None = None, observation: dict | None = None
@@ -262,6 +322,8 @@ class PostgresResults:
                     INSERT INTO forecast_observations (target_date, payload) VALUES (%s, %s)
                     ON CONFLICT (target_date) DO NOTHING
                 """, (date.fromisoformat(path.stem), Jsonb(read_artifact(path))))
+        self.save_decisions([read_artifact(path) for path in sorted(
+            (directory / "monitoring").glob("*/*/????-??-??.json"))])
         return reports, runs
 
 

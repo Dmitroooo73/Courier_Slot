@@ -96,6 +96,34 @@ export interface Observation extends ModelChoice {
   actuals: Record<string, number> | null;
 }
 
+export interface MonitoringDecision {
+  zone_id: string;
+  start_date: string;
+  end_date: string;
+  rule_version: string;
+  saved_at_utc: string;
+  status: "pending" | "normal" | "warning" | "alert";
+  action: "collect" | "observe" | "check_next_week" | "retrain_recommended";
+  points: (ForecastPoint & { reference: number })[];
+  weeks: { start: string; end: string; days: number; error: number; limit: number; complete: boolean; aboveLimit: boolean }[];
+  rule: { week_days: number; window_days: number; limit_factor: number };
+  source_sha256: string;
+  orders_sources: string[];
+}
+
+export interface DecisionPage {
+  decisions: MonitoringDecision[];
+  next_before: string | null;
+}
+
+export async function getMonitoringDecisions(zone: string, before: string | null, signal: AbortSignal): Promise<DecisionPage> {
+  const query = new URLSearchParams({ zone });
+  if (before) query.set("before", before);
+  const response = await fetch("/api/monitoring/decisions?" + query, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error("Не удалось загрузить историю проверок. Попробуйте ещё раз.");
+  return response.json() as Promise<DecisionPage>;
+}
+
 export interface Run {
   run_id: string;
   target_date: string;
@@ -114,6 +142,7 @@ export interface DashboardData {
   metrics: Metrics | null;
   runs: Run[];
   observations?: Observation[];
+  monitoring_decisions?: MonitoringDecision[];
 }
 
 export async function getDashboard(date: string, signal: AbortSignal): Promise<DashboardData> {

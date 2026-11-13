@@ -103,6 +103,35 @@ class HttpIntegrationTests(unittest.TestCase):
         with self.database.connection() as db:
             db.execute("DELETE FROM auth_users")
             db.execute("DELETE FROM auth_attempts")
+            db.execute("DELETE FROM monitoring_decisions")
+            db.execute("DELETE FROM forecast_observations")
+
+    def test_monitoring_decisions_survive_connections_and_api_reads_do_not_write(self):
+        from backend.pipeline.monitoring import RULE_VERSION, decision_records
+        from backend.pipeline.results import PostgresResults
+        from backend.tests.test_monitoring import NOW, observations
+
+        records = list(decision_records(observations([20] * 14), NOW))
+        self.assertEqual(self.database.save_decisions(records), 14)
+        self.assertEqual(PostgresResults(self.database.connection_info).save_decisions(records), 0)
+        client = Client(self.base)
+        status, first, _ = client.call("/api/monitoring/decisions?zone=east&limit=5")
+        self.assertEqual(status, 200)
+        self.assertEqual(first["decisions"][0]["status"], "alert")
+        self.assertEqual(first["next_before"], "2026-10-10")
+        other = Client(self.base)
+        self.assertEqual(other.call("/api/monitoring/decisions?zone=east&limit=5")[1], first)
+        second = other.call("/api/monitoring/decisions?zone=east&limit=5&before=2026-10-10")[1]
+        self.assertEqual(second["decisions"][0]["end_date"], "2026-10-09")
+        self.assertEqual(client.call("/api/monitoring/decisions?zone=north")[1]["decisions"], [])
+        for query in ("zone=unknown", "zone=../east", "zone=east&limit=31", "zone=east&before=bad"):
+            self.assertEqual(client.call("/api/monitoring/decisions?" + query)[0], 422)
+        current = client.call("/api/dashboard")[1]["monitoring_decisions"]
+        self.assertEqual(current, [records[-1]])
+        self.assertEqual(len(self.database.decisions(RULE_VERSION, "east")), 14)
+        # An attempted repeat must not alter a historical conclusion or its timestamp.
+        self.assertEqual(self.database.save_decisions([{**records[-1], "status": "normal"}]), 0)
+        self.assertEqual(self.database.decisions(RULE_VERSION, "east", 1), [records[-1]])
 
     def register(self, login="qa_user"):
         client = Client(self.base)

@@ -342,7 +342,7 @@ export function Dashboard() {
               ? "Сравниваем заранее сохранённые прогнозы с заказами после завершения каждого дня."
               : "Проигрываем 14 прошлых дней, чтобы показать, как система замечает рост ошибки."}</p>
             {monitorMode === "live" ? (
-              <LiveMonitoring observations={data?.observations ?? []} zoneId={selected?.zone_id ?? zoneId} zonePicker={zonePicker} />
+              <LiveMonitoring observations={data?.observations ?? []} decisions={data?.monitoring_decisions ?? []} zoneId={selected?.zone_id ?? zoneId} zonePicker={zonePicker} />
             ) : <Monitoring key={selectionKey} points={history} zonePicker={zonePicker} validationMae={validationMae} />}
           </>
         )}
