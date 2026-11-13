@@ -2,15 +2,17 @@ import argparse
 import errno
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from time import sleep
 from uuid import uuid4
 
-from .modeling.report import FIRST_MODEL_DATE, build_report
-from .modeling.registry import make_model_version
+from .modeling.inference import forecast_from_saved
+from .modeling.demo_cycle import ensure_demo
+from .modeling.lifecycle import train_first_version, update_models
+from .modeling.report import FIRST_MODEL_DATE
 from .pipeline.drift import persist_input_drift
 from .pipeline.forecast import forecast_cutoff
 from .pipeline.observations import collect_closed_days, observation_record
@@ -56,15 +58,21 @@ def result_lock(store: FileResults | PostgresResults, data: Path):
     return store.daily_lock() if isinstance(store, PostgresResults) else daily_lock(data / ".daily.lock")
 
 
-def publish_daily(target: date, data: Path, force: bool = False) -> None:
-    store = result_store(data)
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def publish_daily(target: date, data: Path, force: bool = False, *,
+                  store: FileResults | PostgresResults | None = None, clock: Callable[[], datetime] = utc_now) -> None:
+    """`store` and `clock` let the isolated lifecycle demo replay past evenings with the same code."""
+    store = store or result_store(data)
     location = store.location(EVALUATIONS, target)
     with result_lock(store, data):
         if store.has(EVALUATIONS, target) and not force:
             print(f"Прогноз на {target} уже опубликован.", flush=True)
             return
 
-        started = datetime.now(timezone.utc)
+        started = clock()
         run_id = f"{started:%Y%m%dT%H%M%S%fZ}-{uuid4().hex[:8]}"
         journal = {
             "run_id": run_id,
@@ -75,10 +83,16 @@ def publish_daily(target: date, data: Path, force: bool = False) -> None:
         }
         print(f"Готовим прогноз на {target}…", flush=True)
         try:
-            report, fitted = build_report(target, data, journal)
-            model = make_model_version(report, *fitted, published=True)
-            report["model_version_id"] = model.metadata["version_id"]
-            published = datetime.now(timezone.utc)
+            active = store.active_model()
+            if active is None:
+                # A clean stand trains its first working version once; later evenings only predict.
+                journal["step"] = "first_model"
+                train_first_version(store, data, target, started, actor="worker")
+                active = store.active_model()
+            journal["step"] = "load_model"
+            model = store.model_version(active["version_id"])
+            report = forecast_from_saved(target, data, journal, model, active)
+            published = clock()
             observation = observation_record(target, report, published)
             journal.update(
                 status="success",
@@ -87,7 +101,7 @@ def publish_daily(target: date, data: Path, force: bool = False) -> None:
                 model_version_id=report["model_version_id"],
                 finished_at_utc=published.isoformat(),
             )
-            store.publish(EVALUATIONS, target, report, journal, observation, model=model)
+            store.publish(EVALUATIONS, target, report, journal, observation)
         except (Exception, KeyboardInterrupt) as error:
             journal.pop("model_version_id", None)
             if journal.pop("forecast_file", None) is not None:
@@ -95,7 +109,7 @@ def publish_daily(target: date, data: Path, force: bool = False) -> None:
             journal.update(
                 status="failed",
                 error=str(error) or type(error).__name__,
-                finished_at_utc=datetime.now(timezone.utc).isoformat(),
+                finished_at_utc=clock().isoformat(),
             )
             try:
                 previous = latest_location(store)
@@ -109,9 +123,29 @@ def publish_daily(target: date, data: Path, force: bool = False) -> None:
     print(f"Прогноз на {target} опубликован в {location}.", flush=True)
 
 
-def wait_until(deadline: datetime) -> None:
+def wait_until(deadline: datetime, wake: Callable[[], bool] | None = None) -> None:
     while (remaining := (deadline - datetime.now(MOSCOW)).total_seconds()) > 0:
         sleep(min(remaining, 60))
+        if wake is not None and wake():
+            return
+
+
+def candidate_waiting(data: Path) -> bool:
+    """An administrator may queue a candidate between scheduled checks."""
+    try:
+        job = result_store(data).open_candidate()
+    except (OSError, StorageUnavailable):
+        return False
+    return job is not None and job["status"] == "queued"
+
+
+def maintain_models(data: Path, now: datetime) -> None:
+    store = result_store(data)
+    with result_lock(store, data):
+        job = update_models(store, data, now)
+    if job is not None:
+        outcome = job.get("decision", {}).get("summary") or job.get("error") or ""
+        print(f"Проверка новой версии модели завершена: {job['status']}. {outcome}", flush=True)
 
 
 def settle_observations(data: Path, now: datetime) -> None:
@@ -138,6 +172,7 @@ def watch(data: Path) -> None:
     published_target = None
     settled_on = None
     drift_checked_on = None
+    demo_checked_on = None
     while True:
         now = datetime.now(MOSCOW)
         target = latest_due(now)
@@ -167,8 +202,21 @@ def watch(data: Path) -> None:
                 print(f"Проверка входных данных прервана. {error}", file=sys.stderr, flush=True)
             else:
                 drift_checked_on = now.date()
+        try:
+            maintain_models(data, now)
+        except Exception as error:
+            deadline = min(deadline, datetime.now(MOSCOW) + RETRY_DELAY)
+            print(f"Обновление модели прервано. {error}", file=sys.stderr, flush=True)
+        if demo_checked_on != now.date():
+            # Built once per demo version on isolated data; a failure is retried the next day.
+            demo_checked_on = now.date()
+            try:
+                if ensure_demo(data) is not None:
+                    print("Подготовили учебный цикл обновления модели на изолированных данных.", flush=True)
+            except Exception as error:
+                print(f"Учебный цикл не подготовлен. {error}", file=sys.stderr, flush=True)
         print(f"Следующая проверка в {deadline:%d.%m.%Y %H:%M:%S} мск.", flush=True)
-        wait_until(deadline)
+        wait_until(deadline, lambda: candidate_waiting(data))
 
 
 def main() -> int:

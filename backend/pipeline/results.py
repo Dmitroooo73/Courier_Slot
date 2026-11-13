@@ -12,6 +12,18 @@ from .storage import write_json
 FORECASTS = "forecasts"
 EVALUATIONS = "evaluations"
 REPORT_KINDS = (FORECASTS, EVALUATIONS)
+OPEN_CANDIDATE = ("queued", "training")
+CANDIDATE_STATUSES = (*OPEN_CANDIDATE, "activated", "rejected", "failed")
+
+
+def active_pointer(record: dict) -> dict:
+    """The working-version row: the context a daily forecast needs, plus where it came from."""
+    return {**record["context"], "version_id": record["version_id"],
+            "activation_id": record["activation_id"], "activated_at_utc": record["at_utc"]}
+
+
+def without_context(record: dict) -> dict:
+    return {key: value for key, value in record.items() if key != "context"}
 
 
 @dataclass(frozen=True)
@@ -146,6 +158,68 @@ class FileResults:
     def model_metadata(self, version_id: str) -> dict:
         return read_artifact(self.directory / "model_registry" / (version_id + ".json"))["metadata"]
 
+    def active_model(self) -> dict | None:
+        try:
+            return read_artifact(self.directory / "active_forecast_model.json")
+        except FileNotFoundError:
+            return None
+
+    def activate_model(self, record: dict, *, expected: str | None, model: ModelVersion | None = None,
+                       candidate: dict | None = None) -> bool:
+        """Switch the working version only if `expected` is still active (None: nothing active yet)."""
+        current = self.active_model()
+        if (current["version_id"] if current else None) != expected:
+            return False
+        if model is not None:
+            self.save_model(model)
+        self.model_metadata(record["version_id"])
+        if candidate is not None:
+            self.save_candidate(candidate)
+        write_json(self.directory / "model_activations" / (record["activation_id"] + ".json"), record)
+        write_json(self.directory / "active_forecast_model.json", active_pointer(record))
+        return True
+
+    def activations(self, limit: int = 20) -> list[dict]:
+        paths = sorted((self.directory / "model_activations").glob("*.json"), reverse=True)
+        return [without_context(read_artifact(path)) for path in paths[:limit]]
+
+    def activation_context(self, version_id: str) -> dict | None:
+        for path in sorted((self.directory / "model_activations").glob("*.json"), reverse=True):
+            record = read_artifact(path)
+            if record["version_id"] == version_id:
+                return record["context"]
+        return None
+
+    def candidates(self, limit: int = 10) -> list[dict]:
+        paths = sorted((self.directory / "model_candidates").glob("*.json"), reverse=True)
+        return [read_artifact(path) for path in paths[:limit]]
+
+    def open_candidate(self) -> dict | None:
+        return next((job for job in self.candidates(limit=None) if job["status"] in OPEN_CANDIDATE), None)
+
+    def queue_candidate(self, job: dict) -> tuple[dict, bool]:
+        existing = next((item for item in self.candidates(limit=None) if item["trigger_key"] == job["trigger_key"]), None)
+        if existing is not None:
+            return existing, False
+        if (current := self.open_candidate()) is not None:
+            return current, False
+        self.save_candidate(job)
+        return job, True
+
+    def save_candidate(self, job: dict, model: ModelVersion | None = None) -> None:
+        if model is not None:
+            self.save_model(model)
+        write_json(self.directory / "model_candidates" / (job["candidate_id"] + ".json"), job)
+
+    def lifecycle_demo(self, demo_version: str) -> dict | None:
+        try:
+            return read_artifact(self.directory / "lifecycle_demo" / (demo_version + ".json"))
+        except FileNotFoundError:
+            return None
+
+    def save_lifecycle_demo(self, summary: dict) -> None:
+        write_json(self.directory / "lifecycle_demo" / (summary["demo_version"] + ".json"), summary)
+
     def publish(
         self, kind: str, target: date, report: dict, run: dict | None = None,
         observation: dict | None = None, *, model: ModelVersion | None = None,
@@ -226,6 +300,39 @@ class PostgresResults:
                     metadata jsonb NOT NULL CHECK (jsonb_typeof(metadata) = 'object'),
                     artifact bytea NOT NULL CHECK (octet_length(artifact) > 0)
                 )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS active_forecast_model (
+                    singleton boolean PRIMARY KEY CHECK (singleton),
+                    version_id text NOT NULL REFERENCES model_versions(version_id),
+                    context jsonb NOT NULL CHECK (jsonb_typeof(context) = 'object')
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS model_activations (
+                    activation_id text PRIMARY KEY,
+                    version_id text NOT NULL REFERENCES model_versions(version_id),
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
+                )
+            """)
+            connection.execute(f"""
+                CREATE TABLE IF NOT EXISTS model_candidates (
+                    candidate_id text PRIMARY KEY,
+                    trigger_key text NOT NULL UNIQUE,
+                    status text NOT NULL CHECK (status IN ({", ".join(f"'{status}'" for status in CANDIDATE_STATUSES)})),
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_demos (
+                    demo_version text PRIMARY KEY,
+                    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object')
+                )
+            """)
+            # At most one queued or training candidate, even if the web and worker race.
+            connection.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS model_candidates_single_open
+                ON model_candidates ((status IN ('queued', 'training'))) WHERE status IN ('queued', 'training')
             """)
 
     def location(self, kind: str, target: date) -> str:
@@ -390,6 +497,134 @@ class PostgresResults:
             raise FileNotFoundError(version_id)
         return row[0]
 
+    def active_model(self) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute("SELECT version_id, context FROM active_forecast_model WHERE singleton").fetchone()
+        return {**row[1], "version_id": row[0]} if row else None
+
+    @staticmethod
+    def insert_activation(connection, record: dict) -> None:
+        from psycopg.types.json import Jsonb
+
+        connection.execute("""
+            INSERT INTO model_activations (activation_id, version_id, payload) VALUES (%s, %s, %s)
+            ON CONFLICT (activation_id) DO NOTHING
+        """, (record["activation_id"], record["version_id"], Jsonb(record)))
+
+    @staticmethod
+    def write_candidate(connection, job: dict) -> None:
+        from psycopg.types.json import Jsonb
+
+        connection.execute("""
+            UPDATE model_candidates SET status = %s, payload = %s WHERE candidate_id = %s
+        """, (job["status"], Jsonb(job), job["candidate_id"]))
+
+    def activate_model(self, record: dict, *, expected: str | None, model: ModelVersion | None = None,
+                       candidate: dict | None = None) -> bool:
+        """Switch the working version only if `expected` is still active (None: nothing active yet)."""
+        from psycopg.types.json import Jsonb
+
+        pointer = active_pointer(record)
+        context = Jsonb({key: value for key, value in pointer.items() if key != "version_id"})
+        with self.connection() as connection:
+            # The pointer references model_versions, so a new version is stored first.
+            if model is not None:
+                self.insert_model(connection, model)
+            if expected is None:
+                switched = connection.execute("""
+                    INSERT INTO active_forecast_model (singleton, version_id, context) VALUES (true, %s, %s)
+                    ON CONFLICT (singleton) DO NOTHING
+                """, (record["version_id"], context)).rowcount == 1
+            else:
+                switched = connection.execute("""
+                    UPDATE active_forecast_model SET version_id = %s, context = %s
+                    WHERE singleton AND version_id = %s
+                """, (record["version_id"], context, expected)).rowcount == 1
+            if not switched:
+                connection.rollback()
+                return False
+            self.insert_activation(connection, record)
+            if candidate is not None:
+                self.write_candidate(connection, candidate)
+        return True
+
+    def activations(self, limit: int = 20) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute("""
+                SELECT payload - 'context' FROM model_activations ORDER BY activation_id DESC LIMIT %s
+            """, (limit,)).fetchall()
+        return [row[0] for row in rows]
+
+    def activation_context(self, version_id: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute("""
+                SELECT payload->'context' FROM model_activations WHERE version_id = %s
+                ORDER BY activation_id DESC LIMIT 1
+            """, (version_id,)).fetchone()
+        return row[0] if row else None
+
+    def candidates(self, limit: int | None = 10) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM model_candidates ORDER BY candidate_id DESC LIMIT %s", (limit,)
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def open_candidate(self) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute("""
+                SELECT payload FROM model_candidates WHERE status IN ('queued', 'training')
+                ORDER BY candidate_id LIMIT 1
+            """).fetchone()
+        return row[0] if row else None
+
+    def queue_candidate(self, job: dict) -> tuple[dict, bool]:
+        from psycopg import errors
+        from psycopg.types.json import Jsonb
+
+        try:
+            with self.connection() as connection:
+                existing = connection.execute("SELECT payload FROM model_candidates WHERE trigger_key = %s",
+                                              (job["trigger_key"],)).fetchone()
+                if existing:
+                    return existing[0], False
+                connection.execute("""
+                    INSERT INTO model_candidates (candidate_id, trigger_key, status, payload) VALUES (%s, %s, %s, %s)
+                """, (job["candidate_id"], job["trigger_key"], job["status"], Jsonb(job)))
+            return job, True
+        except StorageUnavailable as error:
+            # A concurrent request inserted the same trigger or another open job first.
+            if not isinstance(error.__cause__, (errors.UniqueViolation, errors.ExclusionViolation)):
+                raise
+        with self.connection() as connection:
+            row = connection.execute("""
+                SELECT payload FROM model_candidates WHERE trigger_key = %s OR status IN ('queued', 'training')
+                ORDER BY (trigger_key = %s) DESC LIMIT 1
+            """, (job["trigger_key"], job["trigger_key"])).fetchone()
+        return row[0], False
+
+    def save_candidate(self, job: dict, model: ModelVersion | None = None) -> None:
+        with self.connection() as connection:
+            if model is not None:
+                self.insert_model(connection, model)
+            self.write_candidate(connection, job)
+
+    def lifecycle_demo(self, demo_version: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute("SELECT payload FROM lifecycle_demos WHERE demo_version = %s",
+                                     (demo_version,)).fetchone()
+        return row[0] if row else None
+
+    def save_lifecycle_demo(self, summary: dict) -> None:
+        """A replay on isolated data; kept apart from working forecasts, decisions and versions."""
+        from psycopg.types.json import Jsonb
+
+        with self.connection() as connection:
+            connection.execute("""
+                INSERT INTO lifecycle_demos (demo_version, payload) VALUES (%s, %s)
+                ON CONFLICT (demo_version) DO UPDATE SET payload = EXCLUDED.payload
+            """, (summary["demo_version"], Jsonb(summary)))
+
     def publish(
         self, kind: str, target: date, report: dict, run: dict | None = None,
         observation: dict | None = None, *, model: ModelVersion | None = None,
@@ -430,6 +665,18 @@ class PostgresResults:
         with self.connection() as connection:
             for path in sorted((directory / "model_registry").glob("*.json")):
                 self.insert_model(connection, source.model_version(path.stem))
+            for path in sorted((directory / "model_activations").glob("*.json")):
+                self.insert_activation(connection, read_artifact(path))
+            for job in reversed(source.candidates(limit=None)):
+                connection.execute("""
+                    INSERT INTO model_candidates (candidate_id, trigger_key, status, payload) VALUES (%s, %s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                """, (job["candidate_id"], job["trigger_key"], job["status"], Jsonb(job)))
+            if (active := source.active_model()) is not None:
+                connection.execute("""
+                    INSERT INTO active_forecast_model (singleton, version_id, context) VALUES (true, %s, %s)
+                    ON CONFLICT (singleton) DO NOTHING
+                """, (active["version_id"], Jsonb({key: value for key, value in active.items() if key != "version_id"})))
             for target in source.dates():
                 for kind in REPORT_KINDS:
                     if not source.has(kind, target):

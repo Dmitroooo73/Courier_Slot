@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from .pipeline.results import InvalidArtifact, StorageUnavailable
 from .routers.auth import admin_router, auth_router
 from .routers.dashboard import router
+from .routers.models import router as models_router
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ def create_app(data_directory: Path | None = None) -> FastAPI:
     app = FastAPI(title="Пульт доставки", version="0.1.0")
     app.state.data_directory = data_directory or Path(getenv("PULT_DATA_DIR", ROOT / "data"))
     app.include_router(router)
+    app.include_router(models_router)
     app.include_router(auth_router)
     app.include_router(admin_router)
 

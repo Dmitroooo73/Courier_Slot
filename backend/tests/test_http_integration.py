@@ -107,7 +107,15 @@ class HttpIntegrationTests(unittest.TestCase):
             db.execute("DELETE FROM forecast_observations")
             db.execute("DELETE FROM drift_reports")
             db.execute("DELETE FROM drift_references")
+            db.execute("DELETE FROM active_forecast_model")
+            db.execute("DELETE FROM model_activations")
+            db.execute("DELETE FROM model_candidates")
             db.execute("DELETE FROM model_versions")
+
+    def activation(self, version_id, previous=None, action="initialize", hour=0):
+        return {"activation_id": f"20261113T{hour:02d}0000000000Z-00000000", "action": action,
+                "version_id": version_id, "previous_version_id": previous, "candidate_id": None, "actor": "test",
+                "reason": "", "at_utc": f"2026-11-13T{hour:02d}:00:00+00:00", "context": {"reference": {}}}
 
     def test_registry_reads_metadata_and_failed_publication_rolls_back_model(self):
         from datetime import date
@@ -133,7 +141,9 @@ class HttpIntegrationTests(unittest.TestCase):
             client = Client(self.base)
             status, body, _ = client.call("/api/models?limit=1")
             self.assertEqual(status, 200)
-            self.assertEqual(body, {"versions": [stored.metadata], "next_before": None})
+            self.assertEqual({key: body[key] for key in ("versions", "next_before", "active_version")},
+                             {"versions": [stored.metadata], "next_before": None, "active_version": None})
+            self.assertEqual((body["lifecycle"]["candidates"], body["lifecycle"]["activations"]), ([], []))
             self.assertEqual(client.call(f"/api/models?before={first_id}")[1]["versions"], [])
             self.assertEqual(client.call("/api/models?before=bad")[0], 422)
 
@@ -142,17 +152,103 @@ class HttpIntegrationTests(unittest.TestCase):
                       "forecast_cutoff": "2026-11-12T20:00:00+03:00", "orders_source": "synthetic",
                       "weather": {}, "forecasts": [], "validation": [], "holdout": {}}
             self.database.publish(EVALUATIONS, target, report, model=failed)
+            self.assertTrue(self.database.activate_model(self.activation(first_id), expected=None))
+            self.assertFalse(self.database.activate_model(self.activation(second_id, hour=1), expected=None))
+            self.assertFalse(self.database.activate_model(self.activation(second_id, first_id, "activate", 1),
+                                                          expected=second_id), "stale expectation")
             status, dashboard, _ = client.call(f"/api/dashboard?date={target}")
             self.assertEqual(status, 200)
             self.assertEqual(dashboard["forecast"]["model_version_id"], second_id)
             self.assertEqual(dashboard["forecast_model"], failed.metadata)
             status, page, _ = client.call("/api/models?limit=1")
             self.assertEqual((status, page["next_before"]), (200, second_id))
+            self.assertEqual(page["active_version"], stored.metadata)
             self.assertEqual(client.call(f"/api/models?before={second_id}")[1]["versions"], [stored.metadata])
+            self.assertNotIn("lifecycle", client.call(f"/api/models?before={second_id}")[1])
         finally:
             with self.database.connection() as connection:
                 connection.execute("DELETE FROM pipeline_runs WHERE run_id = %s", (run["run_id"],))
                 connection.execute("DELETE FROM forecast_reports WHERE kind = %s AND target_date = %s", (EVALUATIONS, target))
+
+    def test_activation_stores_a_new_version_atomically(self):
+        from backend.pipeline.results import ModelVersion
+
+        first = ModelVersion({"version_id": "20261101T120000000000Z-000000000001"}, b"first")
+        second = ModelVersion({"version_id": "20261108T120000000000Z-000000000002"}, b"second")
+        record = self.activation(first.metadata["version_id"])
+        self.assertTrue(self.database.activate_model(record, expected=None, model=first), "clean stand: version and pointer together")
+        self.assertEqual(self.database.model_version(first.metadata["version_id"]), first)
+        stale = self.activation(second.metadata["version_id"], first.metadata["version_id"], "activate", 1)
+        self.assertFalse(self.database.activate_model(stale, expected=second.metadata["version_id"], model=second))
+        with self.assertRaises(FileNotFoundError):
+            self.database.model_version(second.metadata["version_id"])
+        self.assertEqual([item["action"] for item in self.database.activations()], ["initialize"])
+
+        job = {"candidate_id": "20261108T000000000000Z-00000001", "trigger_key": "monitoring:2026-11-07", "status": "queued",
+               "trigger": {"kind": "monitoring", "end_date": "2026-11-07"}, "active_version_id": first.metadata["version_id"]}
+        self.assertEqual(self.database.queue_candidate(job), (job, True))
+        other = {**job, "candidate_id": "20261108T000000000000Z-00000002", "trigger_key": "manual:2026-11-07"}
+        self.assertEqual(self.database.queue_candidate(other), (job, False), "single open job across processes")
+        accepted = {**job, "status": "activated", "version_id": second.metadata["version_id"]}
+        self.assertTrue(self.database.activate_model(stale, expected=first.metadata["version_id"], model=second, candidate=accepted))
+        self.assertEqual(self.database.active_model()["version_id"], second.metadata["version_id"])
+        self.assertEqual(self.database.candidates(), [accepted])
+        self.assertIsNone(self.database.open_candidate())
+        self.assertEqual(self.database.queue_candidate(other)[1], True, "a new job once the previous one is closed")
+
+    def test_model_actions_require_admin_and_never_duplicate_or_lose_versions(self):
+        from datetime import datetime, timedelta
+
+        from backend.pipeline.orders import MOSCOW
+        from backend.pipeline.results import ModelVersion
+
+        first_id = "20261101T120000000000Z-000000000001"
+        second_id = "20261108T120000000000Z-000000000002"
+        yesterday = datetime.now(MOSCOW).date() - timedelta(days=1)
+        first = ModelVersion({"version_id": first_id, "training": {"end": "2026-01-01"}}, b"first")
+        second = ModelVersion({"version_id": second_id, "training": {"end": yesterday.isoformat()}}, b"second")
+        for model in (first, second):
+            self.database.save_model(model)
+        self.assertTrue(self.database.activate_model(self.activation(first_id), expected=None))
+        self.assertTrue(self.database.activate_model(self.activation(second_id, first_id, "activate", 1), expected=first_id))
+
+        user, _ = self.register("qa_user")
+        admin, _ = self.register("qa_admin")
+        self.auth.promote("qa_admin")
+        anonymous = Client(self.base)
+        for path, body in (("/api/admin/models/candidates", None),
+                           ("/api/admin/models/rollback", {"expected_version_id": second_id})):
+            self.assertEqual(anonymous.call(path, "POST", body)[0], 401)
+            self.assertEqual(user.call(path, "POST", body)[0], 403)
+            self.assertEqual(admin.call(path, "POST", body, browser_header=False)[0], 403)
+
+        status, body, _ = admin.call("/api/admin/models/candidates", "POST")
+        self.assertEqual(status, 409)
+        self.assertIn("Честная контрольная неделя", body["detail"])
+        self.assertIn("Честная", anonymous.call("/api/models")[1]["lifecycle"]["manual_check"]["issue"])
+
+        with self.database.connection() as db:
+            db.execute("UPDATE model_versions SET metadata = jsonb_set(metadata, '{training,end}', to_jsonb(%s::text))",
+                       ("2026-01-01",))
+        status, body, _ = admin.call("/api/admin/models/candidates", "POST")
+        self.assertEqual((status, body["created"], body["candidate"]["status"]), (202, True, "queued"))
+        self.assertEqual(body["candidate"]["trigger"]["requested_by"], "admin:qa_admin")
+        repeat = admin.call("/api/admin/models/candidates", "POST")
+        self.assertEqual((repeat[0], repeat[1]["created"], repeat[1]["candidate"]["candidate_id"]),
+                         (200, False, body["candidate"]["candidate_id"]))
+        self.assertEqual(len(anonymous.call("/api/models")[1]["lifecycle"]["candidates"]), 1)
+
+        self.assertEqual(admin.call("/api/admin/models/rollback", "POST", {"expected_version_id": first_id})[0], 409)
+        self.assertEqual(admin.call("/api/admin/models/rollback", "POST", {"expected_version_id": "bad"})[0], 422)
+        status, body, _ = admin.call("/api/admin/models/rollback", "POST", {"expected_version_id": second_id})
+        self.assertEqual(status, 200, body)
+        self.assertEqual((body["activation"]["action"], body["activation"]["version_id"]), ("rollback", first_id))
+        page = anonymous.call("/api/models")[1]
+        self.assertEqual(page["active_version"]["version_id"], first_id)
+        self.assertEqual(page["lifecycle"]["rollback_to"]["version_id"], second_id)
+        self.assertEqual([item["action"] for item in page["lifecycle"]["activations"]], ["rollback", "activate", "initialize"])
+        self.assertNotIn("context", page["lifecycle"]["activations"][0])
+        self.assertEqual(self.database.active_model()["reference"], {})
 
     def test_dashboard_reads_saved_drift_and_repeat_preserves_the_report(self):
         from backend.pipeline.drift import RULE_VERSION, persist_input_drift
