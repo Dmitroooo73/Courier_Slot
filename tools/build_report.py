@@ -26,7 +26,7 @@ INLINE = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))")
 TITLE_FIELDS = {
     "university": "[Полное наименование университета]",
     "department": "[Кафедра]",
-    "student": "[Фамилия И. О. студента], группа [номер группы]",
+    "student": "студент группы БВТ2304 Риц Д. А.",
     "teacher": "[Должность, фамилия И. О. преподавателя]",
 }
 
@@ -107,8 +107,8 @@ def centered(document: Document, text: str = "", *, bold=False, size=14, highlig
 
 
 def title_page(document: Document, title: str) -> None:
-    centered(document, TITLE_FIELDS["university"], highlight=True)
-    centered(document, TITLE_FIELDS["department"], highlight=True, space_after=120)
+    centered(document, TITLE_FIELDS["university"], highlight=TITLE_FIELDS["university"].startswith("["))
+    centered(document, TITLE_FIELDS["department"], highlight=TITLE_FIELDS["department"].startswith("["), space_after=120)
     centered(document, "ОТЧЁТ", bold=True, size=16)
     centered(document, "по проектной работе по дисциплине «Проектный практикум»", space_after=12)
     centered(document, title, bold=True, size=16)
@@ -119,7 +119,8 @@ def title_page(document: Document, title: str) -> None:
         paragraph.paragraph_format.first_line_indent = Cm(0)
         paragraph.add_run(label + " ")
         run = paragraph.add_run(value)
-        run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        if value.startswith("["):  # still to be filled in
+            run.font.highlight_color = WD_COLOR_INDEX.YELLOW
     paragraph = document.add_paragraph()
     paragraph.paragraph_format.space_before = Pt(150)
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
