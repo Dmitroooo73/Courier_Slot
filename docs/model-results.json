@@ -1,31 +1,32 @@
 {
-  "target_date": "2026-11-11",
-  "dataset_sha256": "254044127201e3eb59bae88c5541dba6c1b45e8b40e4bdad9f44684387822fc8",
+  "target_date": "2026-11-13",
+  "orders_source": "synthetic-weather-v2",
+  "dataset_sha256": "8610af134c7131c277f4a99b5003a8e92bd106ea275f1dd8c8028913b774d9a6",
   "seed": 42,
   "versions": {
-    "numpy": "2.5.4",
-    "scipy": "1.18.1",
-    "pandas": "2.3.3",
     "catboost": "1.2.10",
-    "scikit-learn": "1.8.0"
+    "pandas": "2.3.3",
+    "scikit-learn": "1.8.0",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1"
   },
   "parameters": {
+    "seasonal_naive_7d": {
+      "lag_days": 7
+    },
     "ridge": {
       "alpha": 1.0
     },
     "catboost": {
-      "depth": 5,
-      "verbose": false,
-      "has_time": true,
       "iterations": 250,
-      "random_seed": 42,
-      "thread_count": 2,
+      "depth": 5,
       "learning_rate": 0.05,
+      "random_seed": 42,
+      "has_time": true,
       "one_hot_max_size": 7,
+      "thread_count": 2,
+      "verbose": false,
       "allow_writing_files": false
-    },
-    "seasonal_naive_7d": {
-      "lag_days": 7
     }
   },
   "selected": {
@@ -35,348 +36,348 @@
   "validation": [
     {
       "model": "seasonal_naive_7d",
-      "by_zone": {
-        "east": {
-          "mae_orders": 8.05952380952381,
-          "observations": 84,
-          "wape_percent": 7.130819464925216
-        },
-        "west": {
-          "mae_orders": 6.178571428571429,
-          "observations": 84,
-          "wape_percent": 5.705804749340369
-        },
-        "north": {
-          "mae_orders": 7.226190476190476,
-          "observations": 84,
-          "wape_percent": 5.9550672029824385
-        },
-        "south": {
-          "mae_orders": 6.154761904761905,
-          "observations": 84,
-          "wape_percent": 6.205737606529828
-        },
-        "center": {
-          "mae_orders": 12.30952380952381,
-          "observations": 84,
-          "wape_percent": 7.620872641509434
-        },
-        "northwest": {
-          "mae_orders": 5.928571428571429,
-          "observations": 84,
-          "wape_percent": 7.027942421676546
-        }
-      },
+      "uses_weather": false,
+      "mae_orders": 10.767857142857142,
+      "wape_percent": 9.76149363263544,
+      "observations": 504,
       "windows": [
         {
-          "end": "2026-08-17",
-          "start": "2026-07-21",
-          "mae_orders": 7.732142857142857,
-          "observations": 168,
-          "wape_percent": 6.771973725367532,
-          "train_through": "2026-07-19"
+          "train_through": "2026-07-21",
+          "start": "2026-07-23",
+          "end": "2026-08-19",
+          "mae_orders": 11.857142857142858,
+          "wape_percent": 10.645575032064984,
+          "observations": 168
         },
         {
-          "end": "2026-09-14",
-          "start": "2026-08-18",
-          "mae_orders": 7.666666666666667,
-          "observations": 168,
-          "wape_percent": 6.6735751295336785,
-          "train_through": "2026-08-16"
+          "train_through": "2026-08-18",
+          "start": "2026-08-20",
+          "end": "2026-09-16",
+          "mae_orders": 10.464285714285714,
+          "wape_percent": 9.499108445453071,
+          "observations": 168
         },
         {
-          "end": "2026-10-12",
-          "start": "2026-09-15",
-          "mae_orders": 7.529761904761905,
-          "observations": 168,
-          "wape_percent": 6.559162086487608,
-          "train_through": "2026-09-13"
+          "train_through": "2026-09-15",
+          "start": "2026-09-17",
+          "end": "2026-10-14",
+          "mae_orders": 9.982142857142858,
+          "wape_percent": 9.125537356478207,
+          "observations": 168
         }
       ],
-      "mae_orders": 7.642857142857143,
-      "observations": 504,
-      "uses_weather": false,
-      "wape_percent": 6.668051516410469
+      "by_zone": {
+        "center": {
+          "mae_orders": 16.05952380952381,
+          "wape_percent": 10.304789550072568,
+          "observations": 84
+        },
+        "north": {
+          "mae_orders": 10.05952380952381,
+          "wape_percent": 8.634784385857348,
+          "observations": 84
+        },
+        "east": {
+          "mae_orders": 11.630952380952381,
+          "wape_percent": 10.699813821049172,
+          "observations": 84
+        },
+        "south": {
+          "mae_orders": 9.452380952380953,
+          "wape_percent": 9.895314057826521,
+          "observations": 84
+        },
+        "west": {
+          "mae_orders": 9.19047619047619,
+          "wape_percent": 8.853211009174313,
+          "observations": 84
+        },
+        "northwest": {
+          "mae_orders": 8.214285714285714,
+          "wape_percent": 10.081823495032145,
+          "observations": 84
+        }
+      }
     },
     {
       "model": "ridge",
-      "by_zone": {
-        "east": {
-          "mae_orders": 5.654761904761905,
-          "observations": 84,
-          "wape_percent": 5.00315989045713
-        },
-        "west": {
-          "mae_orders": 5.035714285714286,
-          "observations": 84,
-          "wape_percent": 4.650395778364116
-        },
-        "north": {
-          "mae_orders": 5.321428571428571,
-          "observations": 84,
-          "wape_percent": 4.385362503678995
-        },
-        "south": {
-          "mae_orders": 4.511904761904762,
-          "observations": 84,
-          "wape_percent": 4.549273796663066
-        },
-        "center": {
+      "uses_weather": false,
+      "mae_orders": 8.464285714285714,
+      "wape_percent": 7.6732139002805955,
+      "observations": 504,
+      "windows": [
+        {
+          "train_through": "2026-07-21",
+          "start": "2026-07-23",
+          "end": "2026-08-19",
           "mae_orders": 8.571428571428571,
-          "observations": 84,
-          "wape_percent": 5.306603773584905
-        },
-        "northwest": {
-          "mae_orders": 4.309523809523809,
-          "observations": 84,
-          "wape_percent": 5.108664973186565
-        }
-      },
-      "windows": [
-        {
-          "end": "2026-08-17",
-          "start": "2026-07-21",
-          "mae_orders": 5.589285714285714,
-          "observations": 168,
-          "wape_percent": 4.895214263371911,
-          "train_through": "2026-07-19"
+          "wape_percent": 7.695596408721676,
+          "observations": 168
         },
         {
-          "end": "2026-09-14",
-          "start": "2026-08-18",
-          "mae_orders": 5.916666666666667,
-          "observations": 168,
-          "wape_percent": 5.150259067357513,
-          "train_through": "2026-08-16"
+          "train_through": "2026-08-18",
+          "start": "2026-08-20",
+          "end": "2026-09-16",
+          "mae_orders": 8.410714285714286,
+          "wape_percent": 7.634948938239585,
+          "observations": 168
         },
         {
-          "end": "2026-10-12",
-          "start": "2026-09-15",
-          "mae_orders": 5.196428571428571,
-          "observations": 168,
-          "wape_percent": 4.526599605931764,
-          "train_through": "2026-09-13"
+          "train_through": "2026-09-15",
+          "start": "2026-09-17",
+          "end": "2026-10-14",
+          "mae_orders": 8.410714285714286,
+          "wape_percent": 7.6889590248680415,
+          "observations": 168
         }
       ],
-      "mae_orders": 5.567460317460317,
-      "observations": 504,
-      "uses_weather": false,
-      "wape_percent": 4.857360476388312
+      "by_zone": {
+        "center": {
+          "mae_orders": 12.488095238095237,
+          "wape_percent": 8.013138797647239,
+          "observations": 84
+        },
+        "north": {
+          "mae_orders": 8.19047619047619,
+          "wape_percent": 7.030451665644799,
+          "observations": 84
+        },
+        "east": {
+          "mae_orders": 7.988095238095238,
+          "wape_percent": 7.3485927061658085,
+          "observations": 84
+        },
+        "south": {
+          "mae_orders": 7.392857142857143,
+          "wape_percent": 7.739282153539381,
+          "observations": 84
+        },
+        "west": {
+          "mae_orders": 7.428571428571429,
+          "wape_percent": 7.155963302752293,
+          "observations": 84
+        },
+        "northwest": {
+          "mae_orders": 7.2976190476190474,
+          "wape_percent": 8.956750438340151,
+          "observations": 84
+        }
+      }
     },
     {
       "model": "ridge",
-      "by_zone": {
-        "east": {
-          "mae_orders": 5.654761904761905,
-          "observations": 84,
-          "wape_percent": 5.00315989045713
-        },
-        "west": {
-          "mae_orders": 5.035714285714286,
-          "observations": 84,
-          "wape_percent": 4.650395778364116
-        },
-        "north": {
-          "mae_orders": 5.321428571428571,
-          "observations": 84,
-          "wape_percent": 4.385362503678995
-        },
-        "south": {
-          "mae_orders": 4.523809523809524,
-          "observations": 84,
-          "wape_percent": 4.561277157604129
-        },
-        "center": {
-          "mae_orders": 8.583333333333334,
-          "observations": 84,
-          "wape_percent": 5.313974056603773
-        },
-        "northwest": {
-          "mae_orders": 4.273809523809524,
-          "observations": 84,
-          "wape_percent": 5.066327970646345
-        }
-      },
+      "uses_weather": true,
+      "mae_orders": 6.787698412698413,
+      "wape_percent": 6.15332038276135,
+      "observations": 504,
       "windows": [
         {
-          "end": "2026-08-17",
-          "start": "2026-07-21",
-          "mae_orders": 5.607142857142857,
-          "observations": 168,
-          "wape_percent": 4.910853925555208,
-          "train_through": "2026-07-19"
+          "train_through": "2026-07-21",
+          "start": "2026-07-23",
+          "end": "2026-08-19",
+          "mae_orders": 7.369047619047619,
+          "wape_percent": 6.616075245831552,
+          "observations": 168
         },
         {
-          "end": "2026-09-14",
-          "start": "2026-08-18",
-          "mae_orders": 5.934523809523809,
-          "observations": 168,
-          "wape_percent": 5.16580310880829,
-          "train_through": "2026-08-16"
+          "train_through": "2026-08-18",
+          "start": "2026-08-20",
+          "end": "2026-09-16",
+          "mae_orders": 6.571428571428571,
+          "wape_percent": 5.9653104230831575,
+          "observations": 168
         },
         {
-          "end": "2026-10-12",
-          "start": "2026-09-15",
-          "mae_orders": 5.154761904761905,
-          "observations": 168,
-          "wape_percent": 4.490303847350409,
-          "train_through": "2026-09-13"
+          "train_through": "2026-09-15",
+          "start": "2026-09-17",
+          "end": "2026-10-14",
+          "mae_orders": 6.4226190476190474,
+          "wape_percent": 5.871469771997606,
+          "observations": 168
         }
       ],
-      "mae_orders": 5.565476190476191,
-      "observations": 504,
-      "uses_weather": true,
-      "wape_percent": 4.8556294142085585
+      "by_zone": {
+        "center": {
+          "mae_orders": 10.25,
+          "wape_percent": 6.577037659460698,
+          "observations": 84
+        },
+        "north": {
+          "mae_orders": 6.238095238095238,
+          "wape_percent": 5.354588187206213,
+          "observations": 84
+        },
+        "east": {
+          "mae_orders": 6.714285714285714,
+          "wape_percent": 6.1767604862556125,
+          "observations": 84
+        },
+        "south": {
+          "mae_orders": 6.0,
+          "wape_percent": 6.281156530408774,
+          "observations": 84
+        },
+        "west": {
+          "mae_orders": 5.857142857142857,
+          "wape_percent": 5.6422018348623855,
+          "observations": 84
+        },
+        "northwest": {
+          "mae_orders": 5.666666666666667,
+          "wape_percent": 6.954997077732321,
+          "observations": 84
+        }
+      }
     },
     {
       "model": "catboost",
-      "by_zone": {
-        "east": {
-          "mae_orders": 6.25,
-          "observations": 84,
-          "wape_percent": 5.529808299978934
-        },
-        "west": {
-          "mae_orders": 5.071428571428571,
-          "observations": 84,
-          "wape_percent": 4.683377308707124
-        },
-        "north": {
-          "mae_orders": 5.678571428571429,
-          "observations": 84,
-          "wape_percent": 4.679682134798391
-        },
-        "south": {
-          "mae_orders": 4.785714285714286,
-          "observations": 84,
-          "wape_percent": 4.825351098307526
-        },
-        "center": {
-          "mae_orders": 8.583333333333334,
-          "observations": 84,
-          "wape_percent": 5.313974056603773
-        },
-        "northwest": {
-          "mae_orders": 4.238095238095238,
-          "observations": 84,
-          "wape_percent": 5.0239909681061246
-        }
-      },
-      "windows": [
-        {
-          "end": "2026-08-17",
-          "start": "2026-07-21",
-          "mae_orders": 5.690476190476191,
-          "observations": 168,
-          "wape_percent": 4.983839015743927,
-          "train_through": "2026-07-19"
-        },
-        {
-          "end": "2026-09-14",
-          "start": "2026-08-18",
-          "mae_orders": 6.196428571428571,
-          "observations": 168,
-          "wape_percent": 5.393782383419689,
-          "train_through": "2026-08-16"
-        },
-        {
-          "end": "2026-10-12",
-          "start": "2026-09-15",
-          "mae_orders": 5.416666666666667,
-          "observations": 168,
-          "wape_percent": 4.718448615576065,
-          "train_through": "2026-09-13"
-        }
-      ],
-      "mae_orders": 5.767857142857143,
-      "observations": 504,
       "uses_weather": false,
-      "wape_percent": 5.032197756543415
+      "mae_orders": 8.359126984126984,
+      "wape_percent": 7.577883300956904,
+      "observations": 504,
+      "windows": [
+        {
+          "train_through": "2026-07-21",
+          "start": "2026-07-23",
+          "end": "2026-08-19",
+          "mae_orders": 8.672619047619047,
+          "wape_percent": 7.786447199657974,
+          "observations": 168
+        },
+        {
+          "train_through": "2026-08-18",
+          "start": "2026-08-20",
+          "end": "2026-09-16",
+          "mae_orders": 8.666666666666666,
+          "wape_percent": 7.8672934565299615,
+          "observations": 168
+        },
+        {
+          "train_through": "2026-09-15",
+          "start": "2026-09-17",
+          "end": "2026-10-14",
+          "mae_orders": 7.738095238095238,
+          "wape_percent": 7.074059966262175,
+          "observations": 168
+        }
+      ],
+      "by_zone": {
+        "center": {
+          "mae_orders": 12.94047619047619,
+          "wape_percent": 8.303414559621114,
+          "observations": 84
+        },
+        "north": {
+          "mae_orders": 7.714285714285714,
+          "wape_percent": 6.621704475781729,
+          "observations": 84
+        },
+        "east": {
+          "mae_orders": 8.095238095238095,
+          "wape_percent": 7.447158033074143,
+          "observations": 84
+        },
+        "south": {
+          "mae_orders": 7.380952380952381,
+          "wape_percent": 7.726819541375872,
+          "observations": 84
+        },
+        "west": {
+          "mae_orders": 7.238095238095238,
+          "wape_percent": 6.972477064220183,
+          "observations": 84
+        },
+        "northwest": {
+          "mae_orders": 6.785714285714286,
+          "wape_percent": 8.328462887200468,
+          "observations": 84
+        }
+      }
     },
     {
       "model": "catboost",
-      "by_zone": {
-        "east": {
-          "mae_orders": 6.071428571428571,
-          "observations": 84,
-          "wape_percent": 5.3718137771223935
-        },
-        "west": {
-          "mae_orders": 4.988095238095238,
-          "observations": 84,
-          "wape_percent": 4.606420404573439
-        },
-        "north": {
-          "mae_orders": 5.630952380952381,
-          "observations": 84,
-          "wape_percent": 4.640439517315805
-        },
-        "south": {
-          "mae_orders": 4.845238095238095,
-          "observations": 84,
-          "wape_percent": 4.885367903012844
-        },
-        "center": {
-          "mae_orders": 8.619047619047619,
-          "observations": 84,
-          "wape_percent": 5.336084905660377
-        },
-        "northwest": {
-          "mae_orders": 4.154761904761905,
-          "observations": 84,
-          "wape_percent": 4.925204628845611
-        }
-      },
+      "uses_weather": true,
+      "mae_orders": 7.075396825396825,
+      "wape_percent": 6.414130512986546,
+      "observations": 504,
       "windows": [
         {
-          "end": "2026-08-17",
-          "start": "2026-07-21",
-          "mae_orders": 5.529761904761905,
-          "observations": 168,
-          "wape_percent": 4.843082056094255,
-          "train_through": "2026-07-19"
+          "train_through": "2026-07-21",
+          "start": "2026-07-23",
+          "end": "2026-08-19",
+          "mae_orders": 7.482142857142857,
+          "wape_percent": 6.717614365113296,
+          "observations": 168
         },
         {
-          "end": "2026-09-14",
-          "start": "2026-08-18",
-          "mae_orders": 6.190476190476191,
-          "observations": 168,
-          "wape_percent": 5.38860103626943,
-          "train_through": "2026-08-16"
+          "train_through": "2026-08-18",
+          "start": "2026-08-20",
+          "end": "2026-09-16",
+          "mae_orders": 7.571428571428571,
+          "wape_percent": 6.873075052682768,
+          "observations": 168
         },
         {
-          "end": "2026-10-12",
-          "start": "2026-09-15",
-          "mae_orders": 5.434523809523809,
-          "observations": 168,
-          "wape_percent": 4.73400394068236,
-          "train_through": "2026-09-13"
+          "train_through": "2026-09-15",
+          "start": "2026-09-17",
+          "end": "2026-10-14",
+          "mae_orders": 6.1726190476190474,
+          "wape_percent": 5.642923219241443,
+          "observations": 168
         }
       ],
-      "mae_orders": 5.718253968253968,
-      "observations": 504,
-      "uses_weather": true,
-      "wape_percent": 4.9889212020495775
+      "by_zone": {
+        "center": {
+          "mae_orders": 10.452380952380953,
+          "wape_percent": 6.7068978687648,
+          "observations": 84
+        },
+        "north": {
+          "mae_orders": 6.904761904761905,
+          "wape_percent": 5.92683425301451,
+          "observations": 84
+        },
+        "east": {
+          "mae_orders": 7.119047619047619,
+          "wape_percent": 6.54911838790932,
+          "observations": 84
+        },
+        "south": {
+          "mae_orders": 6.25,
+          "wape_percent": 6.5428713858424725,
+          "observations": 84
+        },
+        "west": {
+          "mae_orders": 6.5476190476190474,
+          "wape_percent": 6.307339449541284,
+          "observations": 84
+        },
+        "northwest": {
+          "mae_orders": 5.178571428571429,
+          "wape_percent": 6.3559322033898304,
+          "observations": 84
+        }
+      }
     }
   ],
   "holdout": {
-    "end": "2026-11-09",
-    "start": "2026-10-13",
-    "baseline": {
-      "mae_orders": 7.946428571428571,
-      "observations": 168,
-      "wape_percent": 6.931104304034059
-    },
+    "train_through": "2026-10-13",
+    "start": "2026-10-15",
+    "end": "2026-11-11",
     "selected": {
-      "mae_orders": 5.809523809523809,
-      "observations": 168,
-      "wape_percent": 5.067234307668345
+      "mae_orders": 6.351190476190476,
+      "wape_percent": 5.786961709512962,
+      "observations": 168
     },
-    "train_through": "2026-10-11"
+    "baseline": {
+      "mae_orders": 10.958333333333334,
+      "wape_percent": 9.984813971146545,
+      "observations": 168
+    }
   },
   "data_quality": {
     "checked_days": 365,
-    "checked_orders": 250829,
+    "checked_orders": 250973,
     "anomaly_count": 0,
     "anomaly_examples": [],
     "missing_weather_days": 29,
@@ -386,8 +387,8 @@
     {
       "configuration": "all",
       "excluded": [],
-      "mae_orders": 5.565476190476191,
-      "wape_percent": 4.8556294142085585,
+      "mae_orders": 6.787698412698413,
+      "wape_percent": 6.15332038276135,
       "observations": 504,
       "mae_delta_from_all": 0.0
     },
@@ -398,10 +399,10 @@
         "precipitation_mm",
         "hours_with_precipitation"
       ],
-      "mae_orders": 5.567460317460317,
-      "wape_percent": 4.857360476388312,
+      "mae_orders": 8.464285714285714,
+      "wape_percent": 7.6732139002805955,
       "observations": 504,
-      "mae_delta_from_all": 0.001984126984126533
+      "mae_delta_from_all": 1.6765873015873005
     },
     {
       "configuration": "without_order_history",
@@ -411,20 +412,20 @@
         "orders_lag_14",
         "mean_closed_week"
       ],
-      "mae_orders": 5.553571428571429,
-      "wape_percent": 4.845243041130037,
+      "mae_orders": 6.781746031746032,
+      "wape_percent": 6.1479243111015185,
       "observations": 504,
-      "mae_delta_from_all": -0.011904761904761862
+      "mae_delta_from_all": -0.005952380952381375
     },
     {
       "configuration": "without_weekday",
       "excluded": [
         "weekday"
       ],
-      "mae_orders": 6.353174603174603,
-      "wape_percent": 5.542861099570697,
+      "mae_orders": 7.559523809523809,
+      "wape_percent": 6.853011007986186,
       "observations": 504,
-      "mae_delta_from_all": 0.7876984126984121
+      "mae_delta_from_all": 0.7718253968253963
     }
   ]
 }
