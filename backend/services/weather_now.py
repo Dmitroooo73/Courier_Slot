@@ -12,6 +12,8 @@ from backend.pipeline.weather import LOCATION
 
 ENDPOINT = "https://api.open-meteo.com/v1/forecast"
 CACHE_FOR = timedelta(minutes=10)
+RETRY_AFTER_FAILURE = timedelta(minutes=2)  # one upstream attempt per two minutes during an outage
+MAX_DATA_AGE = timedelta(hours=3)           # older observations are shown as stale even if just fetched
 TIMEOUT_SECONDS = 4
 CODES = {
     0: "ясно", 1: "преимущественно ясно", 2: "переменная облачность", 3: "пасмурно",
@@ -29,7 +31,8 @@ class WeatherUnavailable(RuntimeError):
 
 _lock = Lock()
 _cached: dict | None = None
-_cached_at: datetime | None = None
+_fetched_at: datetime | None = None
+_retry_at: datetime | None = None
 
 
 def request_url() -> str:
@@ -54,31 +57,41 @@ def parse(raw: bytes, fetched: datetime) -> dict:
     }
     if not isinstance(values["temperature_c"], (int, float)):
         raise ValueError("нет температуры")
+    datetime.fromisoformat(values["observed_at"])
     return values
 
 
+def annotate(now: datetime) -> dict:
+    """Stale when the last refresh failed or the provider's own timestamp is old."""
+    observed = datetime.fromisoformat(_cached["observed_at"])
+    refresh_failed = now - _fetched_at >= CACHE_FOR
+    return {**_cached, "stale": refresh_failed or now - observed > MAX_DATA_AGE,
+            "refresh_failed": refresh_failed,
+            "age_minutes": max(0, int((now - observed).total_seconds() // 60))}
+
+
 def current_weather(now: datetime | None = None, fetch=urlopen) -> dict:
-    """Serve one upstream request per 10 minutes; on failure keep showing the last value, marked stale."""
-    global _cached, _cached_at
+    """At most one upstream request per 10 minutes, and per 2 minutes while the provider is failing."""
+    global _cached, _fetched_at, _retry_at
     now = now or datetime.now(timezone.utc)
     if getenv("PULT_LIVE_WEATHER", "1") == "0":
         raise WeatherUnavailable("Показ текущей погоды отключён настройкой PULT_LIVE_WEATHER=0.")
     with _lock:
-        if _cached is not None and _cached_at is not None and now - _cached_at < CACHE_FOR:
-            return {**_cached, "stale": False}
-        try:
-            request = Request(request_url(), headers={"User-Agent": "pult-dostavki/1.0"})
-            with fetch(request, timeout=TIMEOUT_SECONDS) as response:
-                _cached = parse(response.read(), now)
-            _cached_at = now
-            return {**_cached, "stale": False}
-        except (OSError, URLError, ValueError, KeyError, TypeError) as error:
-            if _cached is not None:
-                return {**_cached, "stale": True}
-            raise WeatherUnavailable("Open-Meteo сейчас не отвечает. Прогноз заказов от этого не зависит.") from error
+        due = _cached is None or now - _fetched_at >= CACHE_FOR
+        if due and (_retry_at is None or now >= _retry_at):
+            try:
+                request = Request(request_url(), headers={"User-Agent": "pult-dostavki/1.0"})
+                with fetch(request, timeout=TIMEOUT_SECONDS) as response:
+                    _cached = parse(response.read(), now)
+                _fetched_at, _retry_at = now, None
+            except (OSError, URLError, ValueError, KeyError, TypeError):
+                _retry_at = now + RETRY_AFTER_FAILURE
+        if _cached is None:
+            raise WeatherUnavailable("Open-Meteo сейчас не отвечает. Прогноз заказов от этого не зависит.")
+        return annotate(now)
 
 
 def reset_cache() -> None:
-    global _cached, _cached_at
+    global _cached, _fetched_at, _retry_at
     with _lock:
-        _cached = _cached_at = None
+        _cached = _fetched_at = _retry_at = None
