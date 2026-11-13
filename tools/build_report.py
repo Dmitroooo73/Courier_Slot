@@ -22,13 +22,16 @@ SOURCE = ROOT / "docs" / "report.md"
 OUTPUT = ROOT / "docs" / "deliverables" / "Пульт_доставки_отчёт.docx"
 FONT = "Times New Roman"
 INLINE = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))")
-# Fields the student fills in: they are highlighted in the document.
-TITLE_FIELDS = {
-    "university": "[Полное наименование университета]",
-    "department": "[Кафедра]",
-    "student": "студент группы БВТ2304 Риц Д. А.",
-    "teacher": "Тетерин Н. Н.",
-}
+# Title page in the university's usual layout.
+INSTITUTION = (
+    "Министерство цифрового развития, связи и массовых коммуникаций Российской Федерации",
+    "Ордена Трудового Красного Знамени",
+    "федеральное государственное бюджетное образовательное учреждение высшего образования",
+    "МОСКОВСКИЙ ТЕХНИЧЕСКИЙ УНИВЕРСИТЕТ СВЯЗИ И ИНФОРМАТИКИ",
+)
+AUTHOR = ("Выполнил:", "студент Риц Д. А.", "группы БВТ2304")
+SUPERVISOR = ("Проверил:", "Тетерин Н. Н.")
+CITY_YEAR = "Москва 2026"
 
 
 def field(paragraph, code: str) -> None:
@@ -106,27 +109,34 @@ def centered(document: Document, text: str = "", *, bold=False, size=14, highlig
     return paragraph
 
 
-def title_page(document: Document, title: str) -> None:
-    centered(document, TITLE_FIELDS["university"], highlight=TITLE_FIELDS["university"].startswith("["))
-    centered(document, TITLE_FIELDS["department"], highlight=TITLE_FIELDS["department"].startswith("["), space_after=120)
-    centered(document, "ОТЧЁТ", bold=True, size=16)
-    centered(document, "по проектной работе по дисциплине «Проектный практикум»", space_after=12)
-    centered(document, title, bold=True, size=16)
-    centered(document, "Тема № 15 «Доставка готовой еды»", space_after=120)
-    for label, value in (("Выполнил:", TITLE_FIELDS["student"]), ("Проверил:", TITLE_FIELDS["teacher"])):
-        paragraph = document.add_paragraph()
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        paragraph.paragraph_format.first_line_indent = Cm(0)
-        paragraph.add_run(label + " ")
-        run = paragraph.add_run(value)
-        if value.startswith("["):  # still to be filled in
-            run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+def title_line(document: Document, text: str, *, align=WD_ALIGN_PARAGRAPH.CENTER, before=0, after=6):
     paragraph = document.add_paragraph()
-    paragraph.paragraph_format.space_before = Pt(150)
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.paragraph_format.first_line_indent = Cm(0)
-    paragraph.add_run("Москва 2026")
-    paragraph.add_run().add_break(WD_BREAK.PAGE)
+    paragraph.alignment = align
+    fmt = paragraph.paragraph_format
+    fmt.first_line_indent = Cm(0)
+    fmt.line_spacing = 1.15
+    fmt.space_before, fmt.space_after = Pt(before), Pt(after)
+    paragraph.add_run(text)
+    return paragraph
+
+
+def title_page(document: Document, title: str) -> None:
+    for line in INSTITUTION:
+        title_line(document, line)
+    title_line(document, "Проектная работа", before=110)
+    title_line(document, "По дисциплине “Проектный практикум”")
+    title_line(document, "Тема № 15 «Доставка готовой еды»")
+    title_line(document, f"«{title}»")
+    for index, line in enumerate(AUTHOR + SUPERVISOR):
+        before = 110 if index == 0 else 12 if line == SUPERVISOR[0] else 0
+        title_line(document, line, align=WD_ALIGN_PARAGRAPH.RIGHT, before=before, after=4)
+    # City and year sit in the first page's own footer, so they stay at the bottom of the title page.
+    footer = document.sections[0].first_page_footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer.paragraph_format.first_line_indent = Cm(0)
+    run = footer.add_run(CITY_YEAR)
+    run.font.name, run.font.size = FONT, Pt(14)
+    document.paragraphs[-1].add_run().add_break(WD_BREAK.PAGE)
 
 
 def contents(document: Document) -> None:
