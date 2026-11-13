@@ -37,8 +37,12 @@ services:
         condition: service_healthy
 
   minio:
-    image: ${PULT_MINIO_IMAGE:-minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+    # minio/minio left Docker Hub in 2025; the Bitnami package of the same server is still public (amd64, arm64).
+    # The explicit start below works for both that package and an older official image set via PULT_MINIO_IMAGE.
+    image: ${PULT_MINIO_IMAGE:-bitnamilegacy/minio@sha256:451fe6858cb770cc9d0e77ba811ce287420f781c7c1b806a386f6896471a349c}
+    entrypoint: ["minio"]
     command: ["server", "/data"]
+    user: "0:0"
     environment: *minio-environment
     volumes:
       - avatar_data:/data
@@ -49,6 +53,7 @@ services:
     environment:
       <<: [*app-environment, *minio-environment]
       PULT_AUTH_SECURE_COOKIE: ${PULT_AUTH_SECURE_COOKIE:-0}
+      PULT_LIVE_WEATHER: ${PULT_LIVE_WEATHER:-1}
       PULT_MINIO_ENDPOINT: minio:9000
     ports:
       - "127.0.0.1:${PULT_PORT:-8765}:8000"
